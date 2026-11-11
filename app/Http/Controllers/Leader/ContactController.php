@@ -8,25 +8,26 @@ use App\Models\ContactChannelHistory;
 use App\Models\User;
 use App\Services\ContactFilter;
 use Carbon\Carbon;
+use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ContactController extends Controller
 {
     public function index(Request $request): View
     {
-        $user    = auth()->user();
+        $user = auth()->user();
         $channel = $user->marketing_channel ?? User::MARKETING_CHANNEL_TOPLOKER;
 
-        $filters           = ContactFilter::resolveDateFilter($request);
-        $uiFilters         = ContactFilter::resolveUiFilters($request);
+        $filters = ContactFilter::resolveDateFilter($request);
+        $uiFilters = ContactFilter::resolveUiFilters($request);
         $selectedSubLeaderId = $request->integer('sub_leader_id');
 
-        // Sub-leaders only exist in Toploker channel
+        // Sub-leaders in Toploker or Topmatch channel
         $subLeaders = collect();
         if ($user->isToploker()) {
             $subLeaders = User::query()
@@ -36,6 +37,19 @@ class ContactController extends Controller
                     fn (Builder $query) => $query->where('team_id', $user->team_id),
                     fn (Builder $query) => $query->whereRaw('1 = 0')
                 )
+                ->withCount([
+                    'contactsEntered as contacts_entered_count' => function (Builder $query) use ($user, $filters, $uiFilters): void {
+                        $this->applyLeaderContactScope($query, $user);
+                        ContactFilter::applyDateFilter($query, $filters);
+                        ContactFilter::applyListFilters($query, $uiFilters, false);
+                    },
+                ])
+                ->orderBy('name')
+                ->get();
+        } elseif ($user->isTopmatch()) {
+            $subLeaders = User::query()
+                ->where('role', User::ROLE_SUB_LEADER)
+                ->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH)
                 ->withCount([
                     'contactsEntered as contacts_entered_count' => function (Builder $query) use ($user, $filters, $uiFilters): void {
                         $this->applyLeaderContactScope($query, $user);
@@ -71,34 +85,34 @@ class ContactController extends Controller
         $perPage = (int) $uiFilters['per_page'];
 
         // --- Statistics ---
-        $monthlyContactedData     = $this->getMonthlyContactedData($user, $channel);
+        $monthlyContactedData = $this->getMonthlyContactedData($user, $channel);
 
         // --- Channel-specific contacted map for the current page ---
-        $contacts        = $contactsQuery->paginate($perPage)->withQueryString();
+        $contacts = $contactsQuery->paginate($perPage)->withQueryString();
         $channelContactedMap = $this->buildChannelContactedMap($contacts->items(), $user, $channel);
         $channelContactedDateMap = $this->buildChannelContactedDateMap($contacts->items(), $user, $channel);
 
         return view('leader.contacts.index', [
-            'subLeaders'             => $subLeaders,
-            'selectedSubLeaderId'    => $selectedSubLeaderId,
-            'filters'                => $filters,
-            'uiFilters'              => $uiFilters,
-            'contacts'               => $contacts,
-            'monthlyContactedData'   => $monthlyContactedData,
-            'channelContactedMap'    => $channelContactedMap,
-            'channelContactedDateMap'=> $channelContactedDateMap,
-            'isSpecialChannel'       => $user->isSpecialChannel(),
-            'channelLabel'           => $user->marketingChannelLabel(),
+            'subLeaders' => $subLeaders,
+            'selectedSubLeaderId' => $selectedSubLeaderId,
+            'filters' => $filters,
+            'uiFilters' => $uiFilters,
+            'contacts' => $contacts,
+            'monthlyContactedData' => $monthlyContactedData,
+            'channelContactedMap' => $channelContactedMap,
+            'channelContactedDateMap' => $channelContactedDateMap,
+            'isSpecialChannel' => $user->isSpecialChannel(),
+            'channelLabel' => $user->marketingChannelLabel(),
         ]);
     }
 
     public function export(Request $request): StreamedResponse
     {
-        $user    = auth()->user();
+        $user = auth()->user();
         $channel = $user->marketing_channel ?? User::MARKETING_CHANNEL_TOPLOKER;
 
-        $filters             = ContactFilter::resolveDateFilter($request);
-        $uiFilters           = ContactFilter::resolveUiFilters($request);
+        $filters = ContactFilter::resolveDateFilter($request);
+        $uiFilters = ContactFilter::resolveUiFilters($request);
         $selectedSubLeaderId = $request->integer('sub_leader_id');
 
         $allowedSubLeaderIds = [];
@@ -112,6 +126,12 @@ class ContactController extends Controller
                 )
                 ->pluck('id')
                 ->all();
+        } elseif ($user->isTopmatch()) {
+            $allowedSubLeaderIds = User::query()
+                ->where('role', User::ROLE_SUB_LEADER)
+                ->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH)
+                ->pluck('id')
+                ->all();
         }
 
         if ($selectedSubLeaderId > 0 && ! in_array($selectedSubLeaderId, $allowedSubLeaderIds, true)) {
@@ -122,7 +142,8 @@ class ContactController extends Controller
 
         return response()->streamDownload(function () use ($user, $channel, $selectedSubLeaderId, $filters, $uiFilters) {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['Nama Kontak', 'Nomor', 'Asisten Marketing', 'Status', 'Tanggal Input']);
+            $nameHeader = $user->isTopmatch() ? 'Nama Perusahaan' : 'Nama Kontak';
+            fputcsv($handle, [$nameHeader, 'Nomor', 'Asisten Marketing', 'Status', 'Tanggal Input']);
 
             $contactsQuery = $this->scopedContacts($user)
                 ->with('subLeader:id,name')
@@ -145,8 +166,8 @@ class ContactController extends Controller
                 $contactedMap = $this->buildChannelContactedMap($contacts->all(), $user, $channel);
 
                 foreach ($contacts as $contact) {
-                    $isContacted  = $contactedMap[$contact->id] ?? $contact->isContacted();
-                    $statusLabel  = $isContacted ? 'Sudah Dihubungi' : 'Belum Dihubungi';
+                    $isContacted = $contactedMap[$contact->id] ?? $contact->isContacted();
+                    $statusLabel = $isContacted ? 'Sudah Dihubungi' : 'Belum Dihubungi';
 
                     fputcsv($handle, [
                         $contact->contact_name ?? '-',
@@ -189,19 +210,19 @@ class ContactController extends Controller
         $isContactedNow = $this->resolveContactedStatus($contact, $channel);
 
         return response()->json([
-            'ok'           => true,
+            'ok' => true,
             'is_contacted' => $isContactedNow,
-            'label'        => $isContactedNow ? 'Sudah Dihubungi' : 'Belum Dihubungi',
+            'label' => $isContactedNow ? 'Sudah Dihubungi' : 'Belum Dihubungi',
         ]);
     }
 
     public function bulkUpdateStatus(Request $request): JsonResponse
     {
-        $user    = auth()->user();
+        $user = auth()->user();
         $channel = $user->marketing_channel ?? User::MARKETING_CHANNEL_TOPLOKER;
 
         $validated = $request->validate([
-            'contact_ids'   => ['required', 'array', 'min:1'],
+            'contact_ids' => ['required', 'array', 'min:1'],
             'contact_ids.*' => ['integer', 'distinct'],
         ]);
 
@@ -213,11 +234,11 @@ class ContactController extends Controller
                 ->whereIn('id', $ids)
                 ->where('team_id', $user->team_id)
                 ->update([
-                    'is_contacted'          => true,
-                    'status'                => Contact::STATUS_CONTACTED,
-                    'status_updated_by'     => $user->id,
-                    'status_updated_at'     => now(),
-                    'contacted_at'          => now(),
+                    'is_contacted' => true,
+                    'status' => Contact::STATUS_CONTACTED,
+                    'status_updated_by' => $user->id,
+                    'status_updated_at' => now(),
+                    'contacted_at' => now(),
                     'contacted_by_leader_id' => $user->id,
                 ]);
 
@@ -232,13 +253,13 @@ class ContactController extends Controller
             // Special channels: only update channel history
             // Verify the contacts exist (accessible to this user)
             $validIds = $this->scopedContacts($user)->whereIn('contacts.id', $ids)->pluck('contacts.id')->toArray();
-            $updated  = count($validIds);
+            $updated = count($validIds);
 
             ContactChannelHistory::bulkMarkContactedForChannel($validIds, $user, $channel);
         }
 
         return response()->json([
-            'ok'      => true,
+            'ok' => true,
             'updated' => $updated ?? 0,
         ]);
     }
@@ -268,12 +289,23 @@ class ContactController extends Controller
                 return;
             }
 
-            $query->where('contacts.team_id', $user->team_id);
+            $query->where('contacts.team_id', $user->team_id)
+                ->where(function ($q) {
+                    $q->where('contacts.marketing_channel', User::MARKETING_CHANNEL_TOPLOKER)
+                        ->orWhereNull('contacts.marketing_channel');
+                });
 
             return;
         }
 
-        // Topmatch / Kerja Malam: see ALL contacts that have been input by any sub-leader
+        if ($user->isTopmatch()) {
+            // Topmatch: see contacts for Topmatch channel
+            $query->where('contacts.marketing_channel', User::MARKETING_CHANNEL_TOPMATCH);
+
+            return;
+        }
+
+        // Kerja Malam: see ALL contacts that have been input by any sub-leader
         // (no team restriction — they share the entire contact pool)
         $query->whereNotNull('contacts.sub_leader_id');
     }
@@ -288,7 +320,11 @@ class ContactController extends Controller
             return (int) $contact->team_id === (int) $user->team_id;
         }
 
-        // Special channels: can access any contact entered by a sub-leader
+        if ($user->isTopmatch()) {
+            return $contact->marketing_channel === User::MARKETING_CHANNEL_TOPMATCH;
+        }
+
+        // Special channels (Kerja Malam): can access any contact entered by a sub-leader
         return $contact->sub_leader_id !== null;
     }
 
@@ -299,7 +335,7 @@ class ContactController extends Controller
     /**
      * Apply a status filter for Topmatch / KerjaMalam based on contact_channel_histories.
      *
-     * @param array<string, mixed> $uiFilters
+     * @param  array<string, mixed>  $uiFilters
      */
     private function applySpecialChannelStatusFilter(Builder $query, array $uiFilters, string $channel): void
     {
@@ -344,7 +380,7 @@ class ContactController extends Controller
 
         return ContactChannelHistory::where('marketing_channel', $channel)
             ->where('is_contacted', true)
-            ->whereExists(function ($sub) use ($user) {
+            ->whereExists(function ($sub) {
                 $sub->from('contacts')
                     ->whereColumn('contacts.id', 'contact_channel_histories.contact_id')
                     ->whereNotNull('contacts.sub_leader_id');
@@ -400,9 +436,9 @@ class ContactController extends Controller
     /**
      * Build monthly contacted chart data for the user's channel.
      *
-     * @return \Illuminate\Support\Collection<int, array{label: string, count: int}>
+     * @return Collection<int, array{label: string, count: int}>
      */
-    private function getMonthlyContactedData(User $user, string $channel): \Illuminate\Support\Collection
+    private function getMonthlyContactedData(User $user, string $channel): Collection
     {
         if ($user->isToploker()) {
             return $this->scopedContacts($user)
@@ -442,7 +478,7 @@ class ContactController extends Controller
      * Build a map of [contact_id => bool] indicating channel-specific contacted status
      * for the given set of contacts.
      *
-     * @param  array<Contact> $contactItems
+     * @param  array<Contact>  $contactItems
      * @return array<int, bool>
      */
     private function buildChannelContactedMap(array $contactItems, User $user, string $channel): array
@@ -482,7 +518,7 @@ class ContactController extends Controller
      * Build a map of [contact_id => Carbon/string/null] indicating channel-specific contacted date
      * for the given set of contacts.
      *
-     * @param  array<Contact> $contactItems
+     * @param  array<Contact>  $contactItems
      * @return array<int, mixed>
      */
     private function buildChannelContactedDateMap(array $contactItems, User $user, string $channel): array
@@ -498,6 +534,7 @@ class ContactController extends Controller
             foreach ($contactItems as $contact) {
                 $map[$contact->id] = $contact->is_contacted ? ($contact->status_updated_at ?? $contact->contacted_at) : null;
             }
+
             return $map;
         }
 

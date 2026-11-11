@@ -19,7 +19,9 @@
                     </span>
                 </div>
                 <p class="mt-1 text-sm text-slate-600">
-                    @if ($isSpecialChannel)
+                    @if ($channelLabel === 'Topmatch')
+                        Pantau dan tindak lanjuti kontak perusahaan dari asisten marketing Topmatch.
+                    @elseif ($isSpecialChannel)
                         Lihat & kelola status nomor dari semua asisten marketing Toploker.
                     @else
                         Pantau semua input nomor dari asisten marketing di bawah kamu.
@@ -58,7 +60,7 @@
                             aria-label="Cari data kontak"
                             class="xl:col-span-2"
                         />
-                        @if (!$isSpecialChannel)
+                        @if (!$isSpecialChannel || $channelLabel === 'Topmatch')
                         <select name="sub_leader_id" aria-label="Pilih asisten marketing">
                             <option value="">Semua Asisten Marketing</option>
                             @foreach ($subLeaders as $subLeader)
@@ -105,7 +107,7 @@
                     </div>
                 </form>
 
-                @if (!$isSpecialChannel)
+                @if (!$isSpecialChannel || $channelLabel === 'Topmatch')
                 <div class="mt-4 flex flex-wrap gap-2">
                     <a
                         href="{{ route('leader.contacts.index', request()->only('period', 'start_date', 'end_date')) }}"
@@ -160,7 +162,7 @@
                     <table class="table-clean">
                         <thead>
                                 <tr>
-                                    <th>Nama Kontak</th>
+                                    <th>{{ $channelLabel === 'Topmatch' ? 'Nama Perusahaan' : 'Nama Kontak' }}</th>
                                     <th>Nomor
                                         <button id="bulk-copy-btn" type="button" title="Bulk Copy + Mark as Contacted" class="ml-2 inline-flex h-6 w-6 items-center justify-center rounded border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100" data-bulk-url="{{ route('leader.contacts.bulk-status') }}" aria-label="Bulk Copy and Mark as Contacted">
                                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

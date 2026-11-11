@@ -76,6 +76,7 @@ class ArchiveMonthlyContacts extends Command
                                 'normalized_phone'       => $contact->normalized_phone,
                                 'period_key'             => $contact->period_key,
                                 'team_id'                => $contact->team_id,
+                                'marketing_channel'      => $contact->marketing_channel ?? 'toploker',
                                 'sub_leader_id'          => $contact->sub_leader_id,
                                 'leader_id'              => $contact->leader_id,
                                 'input_by'               => $contact->input_by,

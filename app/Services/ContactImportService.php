@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Contact;
+use App\Models\User;
 use App\Support\PhoneNumber;
 use Illuminate\Http\UploadedFile;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -31,33 +32,36 @@ class ContactImportService
     }
 
     /**
-     * @param array<int, array{contact_name: string|null, phone: string}> $rows
-     * @param array{team_id?:int,team_ids?:array<int>,input_by:int,sub_leader_id:?int,leader_id:?int,period_key?:string} $context
+     * @param  array<int, array{contact_name: string|null, phone: string}>  $rows
+     * @param  array{team_id?:int,team_ids?:array<int>,input_by:int,sub_leader_id:?int,leader_id:?int,period_key?:string,marketing_channel?:string,require_company_name?:bool}  $context
      * @return array{created:int,skipped_duplicate:int,skipped_invalid:int,distribution:array<int,int>}
      */
     public function importRows(array $rows, array $context): array
     {
         $periodKey = $context['period_key'] ?? Contact::activePeriodKey();
         $dedupWeekKey = Contact::activeDedupWeekKey();
-        // Duplicate check: scoped to the current week.
-        // A number can be re-entered once its dedup week has passed, even within the same month.
+        $marketingChannel = $context['marketing_channel'] ?? User::MARKETING_CHANNEL_TOPLOKER;
+        $requireCompanyName = (bool) ($context['require_company_name'] ?? false);
+
+        // Duplicate check: scoped to the current week and channel.
         $existingNormalized = Contact::query()
             ->where('dedup_week', $dedupWeekKey)
+            ->where('marketing_channel', $marketingChannel)
             ->whereNotNull('normalized_phone')
             ->pluck('normalized_phone')
             ->flip();
 
         $teamIds = $context['team_ids'] ?? (isset($context['team_id']) ? [$context['team_id']] : []);
-        if (empty($teamIds)) {
-            throw new \InvalidArgumentException('team_ids or team_id must be provided.');
+        if (empty($teamIds) && $marketingChannel === User::MARKETING_CHANNEL_TOPLOKER) {
+            throw new \InvalidArgumentException('team_ids or team_id must be provided for Toploker channel.');
         }
 
         $batchPhones = [];
         $created = 0;
         $skippedDuplicate = 0;
         $skippedInvalid = 0;
-        
-        $distributionCount = array_fill_keys($teamIds, 0);
+
+        $distributionCount = ! empty($teamIds) ? array_fill_keys($teamIds, 0) : [];
         $teamIndex = 0;
         $totalTeams = count($teamIds);
 
@@ -65,17 +69,14 @@ class ContactImportService
             $rawPhone = (string) ($row['phone'] ?? '');
             if (! PhoneNumber::isValid($rawPhone)) {
                 $skippedInvalid++;
+
                 continue;
             }
 
             $normalizedPhone = PhoneNumber::normalize($rawPhone);
             if ($normalizedPhone === null) {
                 $skippedInvalid++;
-                continue;
-            }
 
-            if (isset($existingNormalized[$normalizedPhone]) || isset($batchPhones[$normalizedPhone])) {
-                $skippedDuplicate++;
                 continue;
             }
 
@@ -83,7 +84,20 @@ class ContactImportService
                 ? trim((string) $row['contact_name'])
                 : null;
 
-            $currentTeamId = $teamIds[$teamIndex % $totalTeams];
+            // If company name is required (TopMatch), skip if empty
+            if ($requireCompanyName && ($contactName === null || $contactName === '')) {
+                $skippedInvalid++;
+
+                continue;
+            }
+
+            if (isset($existingNormalized[$normalizedPhone]) || isset($batchPhones[$normalizedPhone])) {
+                $skippedDuplicate++;
+
+                continue;
+            }
+
+            $currentTeamId = $totalTeams > 0 ? $teamIds[$teamIndex % $totalTeams] : null;
 
             Contact::create([
                 'contact_name' => $contactName,
@@ -91,6 +105,7 @@ class ContactImportService
                 'normalized_phone' => $normalizedPhone,
                 'period_key' => $periodKey,
                 'dedup_week' => $dedupWeekKey,
+                'marketing_channel' => $marketingChannel,
                 'team_id' => $currentTeamId,
                 'sub_leader_id' => $context['sub_leader_id'] ?? null,
                 'input_by' => $context['input_by'],
@@ -99,8 +114,10 @@ class ContactImportService
             ]);
 
             $batchPhones[$normalizedPhone] = true;
-            $distributionCount[$currentTeamId]++;
-            $teamIndex++;
+            if ($currentTeamId !== null) {
+                $distributionCount[$currentTeamId]++;
+                $teamIndex++;
+            }
             $created++;
         }
 
@@ -143,7 +160,7 @@ class ContactImportService
     }
 
     /**
-     * @param array<int, array<int, mixed>> $rawRows
+     * @param  array<int, array<int, mixed>>  $rawRows
      * @return array<int, array{contact_name: string|null, phone: string}>
      */
     private function normalizeRows(array $rawRows): array
@@ -177,9 +194,9 @@ class ContactImportService
                 : '(tidak ada kolom terdeteksi)';
 
             throw new \RuntimeException(
-                "Kolom nomor telepon tidak ditemukan. " .
-                "Kolom yang ditemukan di file: {$foundDisplay}. " .
-                "Kolom yang dibutuhkan (salah satu): phone, nomor, no hp, no_telp, atau number."
+                'Kolom nomor telepon tidak ditemukan. '.
+                "Kolom yang ditemukan di file: {$foundDisplay}. ".
+                'Kolom yang dibutuhkan (salah satu): phone, nomor, no hp, no_telp, atau number.'
             );
         }
 
