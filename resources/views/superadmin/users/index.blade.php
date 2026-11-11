@@ -75,12 +75,13 @@
             </div>
 
             {{-- ================================================================
-                 TAMBAH ASISTEN MARKETING  (Toploker only)
+                 TAMBAH ASISTEN MARKETING  (Toploker & Topmatch)
                  ================================================================ --}}
             <div class="panel fade-in-up relative z-[70]">
                 <h3 class="section-title">Tambah Asisten Marketing</h3>
-                <p class="section-subtitle">Asisten Marketing hanya tersedia untuk channel <strong>Toploker</strong>.</p>
-                <form class="mt-4 space-y-4" method="POST" action="{{ route('superadmin.sub-leaders.store') }}">
+                <p class="section-subtitle">Pilih channel marketing saat membuat akun Asisten Marketing baru.</p>
+                <form class="mt-4 space-y-4" method="POST" action="{{ route('superadmin.sub-leaders.store') }}"
+                      x-data="{ channel: 'toploker' }">
                     @csrf
                     <div class="grid gap-4 md:grid-cols-2">
                         <div>
@@ -96,7 +97,14 @@
                             <x-text-input id="sub_password" type="password" name="password" class="mt-1 block w-full" required />
                         </div>
                         <div>
-                            <x-input-label for="sub_team_id" value="Pilih Tim" />
+                            <x-input-label for="sub_marketing_channel" value="Channel Marketing" />
+                            <select id="sub_marketing_channel" name="marketing_channel" class="mt-1 block w-full" x-model="channel" required>
+                                <option value="toploker">Toploker</option>
+                                <option value="topmatch">Topmatch</option>
+                            </select>
+                        </div>
+                        <div x-show="channel === 'toploker'">
+                            <x-input-label for="sub_team_id" value="Pilih Tim (Toploker)" />
                             <div x-data="{
                                 open: false,
                                 options: [
@@ -134,7 +142,7 @@
                                     </div>
                                 </div>
                                 
-                                <select name="team_ids[]" multiple required class="absolute opacity-0 h-0 w-0 pointer-events-none" tabindex="-1">
+                                <select name="team_ids[]" multiple :required="channel === 'toploker'" class="absolute opacity-0 h-0 w-0 pointer-events-none" tabindex="-1">
                                     <template x-for="option in options" :key="option.value">
                                         <option :value="option.value" :selected="selected.includes(option.value)"></option>
                                     </template>
@@ -155,6 +163,15 @@
                                     </template>
                                 </div>
                             </div>
+                        </div>
+                        <div x-show="channel === 'topmatch'">
+                            <x-input-label for="sub_leader_id_tm" value="Pilih Marketing Utama Topmatch (opsional)" />
+                            <select id="sub_leader_id_tm" name="leader_id" class="mt-1 block w-full text-sm">
+                                <option value="">-- Semua / Tidak Terikat --</option>
+                                @foreach ($leadersTopmatch as $tmLeader)
+                                    <option value="{{ $tmLeader->id }}">{{ $tmLeader->name }} ({{ $tmLeader->email }})</option>
+                                @endforeach
+                            </select>
                         </div>
                     </div>
                     <x-primary-button>Simpan Asisten Marketing</x-primary-button>
@@ -502,7 +519,84 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="5" class="px-4 py-4 text-slate-500">Belum ada Asisten Marketing.</td>
+                                    <td colspan="5" class="px-4 py-4 text-slate-500">Belum ada Asisten Marketing Toploker.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {{-- ================================================================
+                 DAFTAR ASISTEN MARKETING — TOPMATCH
+                 ================================================================ --}}
+            <div class="panel fade-in-up relative z-[15]">
+                <div class="flex items-center gap-3">
+                    <span class="inline-flex items-center gap-1.5 rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700">
+                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+                        Topmatch
+                    </span>
+                    <h3 class="section-title mb-0">Daftar Asisten Marketing Topmatch</h3>
+                </div>
+                <p class="mt-1 text-xs text-slate-500">Asisten Marketing Topmatch menginput nomor telepon dan nama perusahaan untuk channel Topmatch.</p>
+                <div class="table-wrap mt-4 !overflow-visible">
+                    <table class="table-clean">
+                        <thead>
+                            <tr>
+                                <th>Nama</th>
+                                <th>Email</th>
+                                <th>Marketing Utama Terikat</th>
+                                <th>Target Harian</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody data-colspan="5">
+                            @forelse ($subLeadersTopmatch as $subLeader)
+                                <tr data-user-row="subLeader-{{ $subLeader->id }}">
+                                    <td>{{ $subLeader->name }}</td>
+                                    <td>{{ $subLeader->email }}</td>
+                                    <td>
+                                        <form class="flex gap-2" method="POST" action="{{ route('superadmin.users.assign-team', $subLeader) }}">
+                                            @csrf
+                                            @method('PATCH')
+                                            <select name="leader_id" class="text-xs">
+                                                <option value="">-- Semua / Tidak Terikat --</option>
+                                                @foreach ($leadersTopmatch as $tmLeader)
+                                                    <option value="{{ $tmLeader->id }}" @selected($subLeader->leader_id === $tmLeader->id)>{{ $tmLeader->name }}</option>
+                                                @endforeach
+                                            </select>
+                                            <button class="btn-subtle px-2 py-1 text-xs">Update</button>
+                                        </form>
+                                    </td>
+                                    <td>{{ number_format(\App\Models\User::TARGET_SUB_LEADER) }} nomor/hari</td>
+                                    <td class="text-right">
+                                        <button
+                                            type="button"
+                                            title="Hapus User"
+                                            aria-label="Hapus User"
+                                            class="btn-danger inline-flex h-10 w-10 items-center justify-center p-0"
+                                            onclick="openDeleteUserModal(@js([
+                                                'id' => $subLeader->id,
+                                                'name' => $subLeader->name,
+                                                'username' => $subLeader->email,
+                                                'role' => 'Asisten Marketing Topmatch',
+                                                'deleteUrl' => route('superadmin.users.destroy', $subLeader),
+                                                'rowId' => 'subLeader-' . $subLeader->id,
+                                            ]))"
+                                        >
+                                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M3 6h18"></path>
+                                                <path d="M19 6l-1 14H6L5 6"></path>
+                                                <path d="M10 11v6"></path>
+                                                <path d="M14 11v6"></path>
+                                                <path d="M9 6V4h6v2"></path>
+                                            </svg>
+                                        </button>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="5" class="px-4 py-4 text-slate-500">Belum ada Asisten Marketing Topmatch.</td>
                                 </tr>
                             @endforelse
                         </tbody>

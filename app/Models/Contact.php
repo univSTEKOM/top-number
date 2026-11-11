@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Model;
     'period_key',
     'dedup_week',
     'team_id',
+    'marketing_channel',
     'sub_leader_id',
     'input_by',
     'leader_id',

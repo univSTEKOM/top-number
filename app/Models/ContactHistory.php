@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'normalized_phone',
     'period_key',
     'team_id',
+    'marketing_channel',
     'sub_leader_id',
     'leader_id',
     'input_by',

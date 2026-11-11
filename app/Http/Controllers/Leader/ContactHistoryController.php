@@ -14,37 +14,44 @@ class ContactHistoryController extends Controller
     public function index(Request $request): View
     {
         /** @var User $user */
-        $user    = auth()->user();
+        $user = auth()->user();
         $channel = $user->marketing_channel ?? User::MARKETING_CHANNEL_TOPLOKER;
 
         $validated = $request->validate([
-            'q'              => ['nullable', 'string', 'max:100'],
+            'q' => ['nullable', 'string', 'max:100'],
             'archive_period' => ['nullable', 'string', 'max:7', 'regex:/^\d{4}-\d{2}$/'],
-            'sub_leader_id'  => ['nullable', 'integer'],
-            'per_page'       => ['nullable', 'in:10,20,50,100'],
+            'sub_leader_id' => ['nullable', 'integer'],
+            'per_page' => ['nullable', 'in:10,20,50,100'],
         ]);
 
-        $q             = isset($validated['q']) ? trim((string) $validated['q']) : null;
+        $q = isset($validated['q']) ? trim((string) $validated['q']) : null;
         $archivePeriod = $validated['archive_period'] ?? null;
-        $subLeaderId   = isset($validated['sub_leader_id']) ? (int) $validated['sub_leader_id'] : null;
-        $perPage       = (int) ($validated['per_page'] ?? 20);
+        $subLeaderId = isset($validated['sub_leader_id']) ? (int) $validated['sub_leader_id'] : null;
+        $perPage = (int) ($validated['per_page'] ?? 20);
 
         $query = ContactHistory::query()
             ->with(['subLeader:id,name'])
             ->orderByDesc('archive_period')
             ->orderByDesc('id');
 
-        // Scope by role:
-        // Toploker leader → only contacts belonging to their team
-        // Special channel (Topmatch/KerjaMalam) → contacts entered by any sub-leader
+        // Scope by role/channel:
+        // Toploker leader → only contacts belonging to their team and toploker channel
+        // Topmatch leader → contacts belonging to topmatch channel
+        // Kerja Malam → contacts entered through subleaders
         if ($user->isToploker()) {
             if ($user->team_id) {
-                $query->where('team_id', $user->team_id);
+                $query->where('team_id', $user->team_id)
+                    ->where(function ($q) {
+                        $q->where('marketing_channel', User::MARKETING_CHANNEL_TOPLOKER)
+                            ->orWhereNull('marketing_channel');
+                    });
             } else {
                 $query->whereRaw('1 = 0');
             }
+        } elseif ($user->isTopmatch()) {
+            $query->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH);
         } else {
-            // Special channels: all contacts that had a sub_leader (entered through subleaders)
+            // Other special channels: all contacts that had a sub_leader
             $query->whereNotNull('sub_leader_id');
         }
 
@@ -63,18 +70,23 @@ class ContactHistoryController extends Controller
             $query->where('archive_period', $archivePeriod);
         }
 
-        // Filter by sub-leader (only for Toploker)
-        if ($user->isToploker() && $subLeaderId !== null && $subLeaderId > 0) {
+        // Filter by sub-leader
+        if ($subLeaderId !== null && $subLeaderId > 0) {
             $query->where('sub_leader_id', $subLeaderId);
         }
 
         $histories = $query->paginate($perPage)->withQueryString();
 
-        // Sub-leaders dropdown (Toploker only — scoped to their team)
+        // Sub-leaders dropdown
         $subLeaders = collect();
         if ($user->isToploker() && $user->team_id) {
             $subLeaders = User::where('role', User::ROLE_SUB_LEADER)
                 ->where('team_id', $user->team_id)
+                ->orderBy('name')
+                ->get(['id', 'name']);
+        } elseif ($user->isTopmatch()) {
+            $subLeaders = User::where('role', User::ROLE_SUB_LEADER)
+                ->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH)
                 ->orderBy('name')
                 ->get(['id', 'name']);
         }
@@ -82,23 +94,24 @@ class ContactHistoryController extends Controller
         // Distinct archive periods
         $archivePeriods = ContactHistory::query()
             ->when($user->isToploker() && $user->team_id, fn ($q) => $q->where('team_id', $user->team_id))
-            ->when(! $user->isToploker(), fn ($q) => $q->whereNotNull('sub_leader_id'))
+            ->when($user->isTopmatch(), fn ($q) => $q->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH))
+            ->when(! $user->isToploker() && ! $user->isTopmatch(), fn ($q) => $q->whereNotNull('sub_leader_id'))
             ->select('archive_period')
             ->distinct()
             ->orderByDesc('archive_period')
             ->pluck('archive_period');
 
         return view('leader.contact-histories.index', [
-            'histories'      => $histories,
-            'subLeaders'     => $subLeaders,
+            'histories' => $histories,
+            'subLeaders' => $subLeaders,
             'archivePeriods' => $archivePeriods,
-            'isToploker'     => $user->isToploker(),
-            'channelLabel'   => $user->marketingChannelLabel(),
-            'filters'        => [
-                'q'              => $q,
+            'isToploker' => $user->isToploker(),
+            'channelLabel' => $user->marketingChannelLabel(),
+            'filters' => [
+                'q' => $q,
                 'archive_period' => $archivePeriod,
-                'sub_leader_id'  => $subLeaderId,
-                'per_page'       => $perPage,
+                'sub_leader_id' => $subLeaderId,
+                'per_page' => $perPage,
             ],
         ]);
     }

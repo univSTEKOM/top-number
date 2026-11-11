@@ -4,12 +4,13 @@ namespace App\Http\Controllers\SubLeader;
 
 use App\Http\Controllers\Controller;
 use App\Models\Contact;
+use App\Models\Team;
 use App\Models\User;
 use App\Services\ContactImportService;
 use App\Support\PhoneNumber;
 use Illuminate\Contracts\View\View;
-use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 
 class ContactController extends Controller
 {
@@ -17,24 +18,192 @@ class ContactController extends Controller
     {
         /** @var User $subLeader */
         $subLeader = auth()->user();
+        $isTopmatch = $subLeader->isTopmatch();
         $periodKey = Contact::activePeriodKey();
-        $contactsCount = Contact::where('sub_leader_id', $subLeader->id)
-            ->where('period_key', $periodKey)
-            ->count();
+
+        $query = Contact::where('sub_leader_id', $subLeader->id)
+            ->where('period_key', $periodKey);
+
+        if ($isTopmatch) {
+            $query->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH);
+        } else {
+            $query->where(function ($q) {
+                $q->where('marketing_channel', User::MARKETING_CHANNEL_TOPLOKER)
+                    ->orWhereNull('marketing_channel');
+            });
+        }
+
+        $contactsCount = (clone $query)->count();
         $target = $subLeader->TARGET_SUB_LEADER;
 
         return view('subleader.contacts.index', [
-            'contacts' => Contact::where('sub_leader_id', auth()->id())
-                ->where('period_key', $periodKey)
-                ->latest()
-                ->paginate(20),
+            'contacts' => $query->latest()->paginate(20),
             'contactsCount' => $contactsCount,
             'target' => $target,
             'progress' => $target > 0 ? min(100, (int) round(($contactsCount / $target) * 100)) : 0,
+            'isTopmatch' => $isTopmatch,
         ]);
     }
 
     public function store(Request $request): RedirectResponse
+    {
+        $subLeader = auth()->user();
+
+        if ($subLeader->isTopmatch()) {
+            return $this->storeTopmatch($request, $subLeader);
+        }
+
+        return $this->storeToploker($request, $subLeader);
+    }
+
+    private function storeTopmatch(Request $request, User $subLeader): RedirectResponse
+    {
+        $hasBatch = $request->filled('entries');
+
+        if (! $hasBatch) {
+            $validated = $request->validate([
+                'company_name' => ['required', 'string', 'min:2', 'max:255'],
+                'phone' => ['required', 'string', 'max:255'],
+            ], [
+                'company_name.required' => 'Nama perusahaan wajib diisi.',
+                'company_name.min' => 'Nama perusahaan minimal 2 karakter.',
+                'phone.required' => 'Nomor telepon wajib diisi.',
+            ]);
+
+            $rawPhone = trim($validated['phone']);
+            if (! PhoneNumber::isValid($rawPhone)) {
+                return back()
+                    ->withErrors(['phone' => PhoneNumber::validationMessage()])
+                    ->withInput();
+            }
+
+            $normalizedPhone = PhoneNumber::normalize($rawPhone);
+            $dedupWeekKey = Contact::activeDedupWeekKey();
+
+            $duplicateExists = Contact::query()
+                ->where('dedup_week', $dedupWeekKey)
+                ->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH)
+                ->where('normalized_phone', $normalizedPhone)
+                ->exists();
+
+            if ($duplicateExists) {
+                return back()
+                    ->withErrors(['phone' => 'Nomor telepon ini sudah diinput pada minggu ini untuk channel Topmatch.'])
+                    ->withInput();
+            }
+
+            Contact::create([
+                'contact_name' => trim($validated['company_name']),
+                'phone' => $normalizedPhone,
+                'normalized_phone' => $normalizedPhone,
+                'period_key' => Contact::activePeriodKey(),
+                'dedup_week' => $dedupWeekKey,
+                'marketing_channel' => User::MARKETING_CHANNEL_TOPMATCH,
+                'team_id' => null,
+                'sub_leader_id' => $subLeader->id,
+                'input_by' => $subLeader->id,
+                'leader_id' => $subLeader->leader_id ?? null,
+                'status' => Contact::STATUS_UNCONTACTED,
+            ]);
+
+            return back()->with('success', 'Kontak Topmatch berhasil disimpan.');
+        }
+
+        $rawLines = preg_split('/\r\n|\r|\n/', trim($request->string('entries')->toString())) ?: [];
+        $parsedEntries = [];
+        $invalidCount = 0;
+
+        foreach ($rawLines as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+
+            $parts = preg_split('/[,;|]/', $line, 2);
+            if (count($parts) < 2) {
+                $invalidCount++;
+
+                continue;
+            }
+
+            $companyName = trim($parts[0]);
+            $rawPhone = trim($parts[1]);
+
+            if ($companyName === '' || ! PhoneNumber::isValid($rawPhone)) {
+                $invalidCount++;
+
+                continue;
+            }
+
+            $normalizedPhone = PhoneNumber::normalize($rawPhone);
+            if ($normalizedPhone === null) {
+                $invalidCount++;
+
+                continue;
+            }
+
+            $parsedEntries[] = [
+                'company_name' => $companyName,
+                'phone' => $normalizedPhone,
+            ];
+        }
+
+        if (empty($parsedEntries)) {
+            return back()
+                ->withErrors(['entries' => 'Format baris tidak valid. Pastikan setiap baris berisi: Nama Perusahaan, Nomor HP.'])
+                ->withInput();
+        }
+
+        $dedupWeekKey = Contact::activeDedupWeekKey();
+        $phonesToCheck = array_column($parsedEntries, 'phone');
+
+        $existingNormalized = Contact::query()
+            ->where('dedup_week', $dedupWeekKey)
+            ->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH)
+            ->whereIn('normalized_phone', $phonesToCheck)
+            ->pluck('normalized_phone')
+            ->flip();
+
+        $batchPhones = [];
+        $created = 0;
+        $skippedDuplicate = 0;
+
+        foreach ($parsedEntries as $entry) {
+            $normalizedPhone = $entry['phone'];
+
+            if (isset($existingNormalized[$normalizedPhone]) || isset($batchPhones[$normalizedPhone])) {
+                $skippedDuplicate++;
+
+                continue;
+            }
+
+            Contact::create([
+                'contact_name' => $entry['company_name'],
+                'phone' => $normalizedPhone,
+                'normalized_phone' => $normalizedPhone,
+                'period_key' => Contact::activePeriodKey(),
+                'dedup_week' => $dedupWeekKey,
+                'marketing_channel' => User::MARKETING_CHANNEL_TOPMATCH,
+                'team_id' => null,
+                'sub_leader_id' => $subLeader->id,
+                'input_by' => $subLeader->id,
+                'leader_id' => $subLeader->leader_id ?? null,
+                'status' => Contact::STATUS_UNCONTACTED,
+            ]);
+
+            $batchPhones[$normalizedPhone] = true;
+            $created++;
+        }
+
+        $total = count($parsedEntries) + $invalidCount;
+
+        return back()->with(
+            'success',
+            "Input massal Topmatch selesai. Total: {$total}, Berhasil: {$created}, Duplikat: {$skippedDuplicate}, Tidak valid: {$invalidCount}."
+        );
+    }
+
+    private function storeToploker(Request $request, User $subLeader): RedirectResponse
     {
         $request->validate([
             'contact_name' => ['nullable', 'string', 'max:255'],
@@ -42,7 +211,6 @@ class ContactController extends Controller
             'phone' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $subLeader = auth()->user();
         $teamIds = $subLeader->teams()->pluck('teams.id')->toArray();
 
         if (empty($teamIds)) {
@@ -65,10 +233,13 @@ class ContactController extends Controller
         }
 
         $dedupWeekKey = Contact::activeDedupWeekKey();
-        // Duplicate check: scoped to the current week.
-        // A number can be re-entered once its dedup week has passed, even within the same month.
+        // Duplicate check: scoped to current week and toploker channel
         $existingNormalized = Contact::query()
             ->where('dedup_week', $dedupWeekKey)
+            ->where(function ($q) {
+                $q->where('marketing_channel', User::MARKETING_CHANNEL_TOPLOKER)
+                    ->orWhereNull('marketing_channel');
+            })
             ->whereIn('normalized_phone', $phones)
             ->pluck('normalized_phone')
             ->flip();
@@ -86,6 +257,7 @@ class ContactController extends Controller
         foreach ($phones as $normalizedPhone) {
             if (isset($existingNormalized[$normalizedPhone]) || isset($batchPhones[$normalizedPhone])) {
                 $skippedDuplicate++;
+
                 continue;
             }
 
@@ -97,10 +269,10 @@ class ContactController extends Controller
             $teamIndex++;
             $created++;
         }
-        
+
         $distributionText = '';
-        if (!empty($distributionCount)) {
-            $teamNames = \App\Models\Team::whereIn('id', array_keys($distributionCount))->pluck('name', 'id');
+        if (! empty($distributionCount)) {
+            $teamNames = Team::whereIn('id', array_keys($distributionCount))->pluck('name', 'id');
             $distParts = [];
             foreach ($distributionCount as $tid => $count) {
                 if ($count > 0) {
@@ -108,8 +280,8 @@ class ContactController extends Controller
                     $distParts[] = "{$tname}: {$count}";
                 }
             }
-            if (!empty($distParts)) {
-                $distributionText = " | Distribusi: " . implode(', ', $distParts);
+            if (! empty($distParts)) {
+                $distributionText = ' | Distribusi: '.implode(', ', $distParts);
             }
         }
 
@@ -117,7 +289,7 @@ class ContactController extends Controller
 
         return back()->with(
             'success',
-            "Input selesai. Total: {$totalInput}, Berhasil: {$created}, Duplikat: {$skippedDuplicate}, Tidak valid: {$invalidCount}." . $distributionText
+            "Input selesai. Total: {$totalInput}, Berhasil: {$created}, Duplikat: {$skippedDuplicate}, Tidak valid: {$invalidCount}.".$distributionText
         );
     }
 
@@ -128,6 +300,33 @@ class ContactController extends Controller
         ]);
 
         $subLeader = auth()->user();
+
+        if ($subLeader->isTopmatch()) {
+            try {
+                $rows = $contactImportService->extractRows($request->file('file'));
+            } catch (\RuntimeException $e) {
+                return back()->withErrors(['file' => $e->getMessage()]);
+            }
+
+            if (empty($rows)) {
+                return back()->withErrors(['file' => 'File tidak memiliki data. Pastikan file berisi setidaknya satu baris data selain header.']);
+            }
+
+            $summary = $contactImportService->importRows($rows, [
+                'marketing_channel' => User::MARKETING_CHANNEL_TOPMATCH,
+                'require_company_name' => true,
+                'team_ids' => [],
+                'input_by' => $subLeader->id,
+                'sub_leader_id' => $subLeader->id,
+                'leader_id' => $subLeader->leader_id ?? null,
+            ]);
+
+            return back()->with(
+                'success',
+                'Import Topmatch selesai. Total: '.count($rows).", Berhasil: {$summary['created']}, Duplikat: {$summary['skipped_duplicate']}, Tidak valid / tanpa nama perusahaan: {$summary['skipped_invalid']}."
+            );
+        }
+
         $teamIds = $subLeader->teams()->pluck('teams.id')->toArray();
 
         if (empty($teamIds)) {
@@ -147,15 +346,16 @@ class ContactController extends Controller
         }
 
         $summary = $contactImportService->importRows($rows, [
+            'marketing_channel' => User::MARKETING_CHANNEL_TOPLOKER,
             'team_ids' => $teamIds,
             'input_by' => $subLeader->id,
             'sub_leader_id' => $subLeader->id,
             'leader_id' => null,
         ]);
-        
+
         $distributionText = '';
-        if (isset($summary['distribution']) && !empty($summary['distribution'])) {
-            $teamNames = \App\Models\Team::whereIn('id', array_keys($summary['distribution']))->pluck('name', 'id');
+        if (isset($summary['distribution']) && ! empty($summary['distribution'])) {
+            $teamNames = Team::whereIn('id', array_keys($summary['distribution']))->pluck('name', 'id');
             $distParts = [];
             foreach ($summary['distribution'] as $tid => $count) {
                 if ($count > 0) {
@@ -163,14 +363,14 @@ class ContactController extends Controller
                     $distParts[] = "{$tname}: {$count}";
                 }
             }
-            if (!empty($distParts)) {
-                $distributionText = " | Distribusi: " . implode(', ', $distParts);
+            if (! empty($distParts)) {
+                $distributionText = ' | Distribusi: '.implode(', ', $distParts);
             }
         }
 
         return back()->with(
             'success',
-            "Import selesai. Total: " . count($rows) . ", Berhasil: {$summary['created']}, Duplikat: {$summary['skipped_duplicate']}, Tidak valid: {$summary['skipped_invalid']}." . $distributionText
+            'Import selesai. Total: '.count($rows).", Berhasil: {$summary['created']}, Duplikat: {$summary['skipped_duplicate']}, Tidak valid: {$summary['skipped_invalid']}.".$distributionText
         );
     }
 
@@ -185,6 +385,7 @@ class ContactController extends Controller
             'normalized_phone' => $normalizedPhone,
             'period_key' => Contact::activePeriodKey(),
             'dedup_week' => Contact::activeDedupWeekKey(),
+            'marketing_channel' => User::MARKETING_CHANNEL_TOPLOKER,
             'team_id' => $teamId,
             'sub_leader_id' => $subLeader->id,
             'input_by' => $subLeader->id,
@@ -211,12 +412,14 @@ class ContactController extends Controller
 
             if (! PhoneNumber::isValid($cleanToken)) {
                 $invalidCount++;
+
                 continue;
             }
 
             $normalizedPhone = PhoneNumber::normalize($cleanToken);
             if ($normalizedPhone === null) {
                 $invalidCount++;
+
                 continue;
             }
 
@@ -225,5 +428,4 @@ class ContactController extends Controller
 
         return [$phones, $invalidCount];
     }
-
 }
