@@ -49,7 +49,10 @@ class ContactHistoryController extends Controller
                 $query->whereRaw('1 = 0');
             }
         } elseif ($user->isTopmatch()) {
-            $query->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH);
+            $query->where(function (Builder $q): void {
+                $q->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH)
+                    ->orWhereNotNull('sub_leader_id');
+            });
         } else {
             // Other special channels: all contacts that had a sub_leader
             $query->whereNotNull('sub_leader_id');
@@ -86,7 +89,6 @@ class ContactHistoryController extends Controller
                 ->get(['id', 'name']);
         } elseif ($user->isTopmatch()) {
             $subLeaders = User::where('role', User::ROLE_SUB_LEADER)
-                ->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH)
                 ->orderBy('name')
                 ->get(['id', 'name']);
         }
@@ -94,7 +96,10 @@ class ContactHistoryController extends Controller
         // Distinct archive periods
         $archivePeriods = ContactHistory::query()
             ->when($user->isToploker() && $user->team_id, fn ($q) => $q->where('team_id', $user->team_id))
-            ->when($user->isTopmatch(), fn ($q) => $q->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH))
+            ->when($user->isTopmatch(), fn ($q) => $q->where(function (Builder $sq): void {
+                $sq->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH)
+                    ->orWhereNotNull('sub_leader_id');
+            }))
             ->when(! $user->isToploker() && ! $user->isTopmatch(), fn ($q) => $q->whereNotNull('sub_leader_id'))
             ->select('archive_period')
             ->distinct()

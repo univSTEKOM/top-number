@@ -49,7 +49,6 @@ class ContactController extends Controller
         } elseif ($user->isTopmatch()) {
             $subLeaders = User::query()
                 ->where('role', User::ROLE_SUB_LEADER)
-                ->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH)
                 ->withCount([
                     'contactsEntered as contacts_entered_count' => function (Builder $query) use ($user, $filters, $uiFilters): void {
                         $this->applyLeaderContactScope($query, $user);
@@ -129,7 +128,6 @@ class ContactController extends Controller
         } elseif ($user->isTopmatch()) {
             $allowedSubLeaderIds = User::query()
                 ->where('role', User::ROLE_SUB_LEADER)
-                ->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH)
                 ->pluck('id')
                 ->all();
         }
@@ -299,8 +297,11 @@ class ContactController extends Controller
         }
 
         if ($user->isTopmatch()) {
-            // Topmatch: see contacts for Topmatch channel
-            $query->where('contacts.marketing_channel', User::MARKETING_CHANNEL_TOPMATCH);
+            // Topmatch: see contacts for Topmatch channel OR any contacts input by sub-leaders (including Toploker)
+            $query->where(function (Builder $q): void {
+                $q->where('contacts.marketing_channel', User::MARKETING_CHANNEL_TOPMATCH)
+                    ->orWhereNotNull('contacts.sub_leader_id');
+            });
 
             return;
         }
@@ -321,7 +322,8 @@ class ContactController extends Controller
         }
 
         if ($user->isTopmatch()) {
-            return $contact->marketing_channel === User::MARKETING_CHANNEL_TOPMATCH;
+            return $contact->marketing_channel === User::MARKETING_CHANNEL_TOPMATCH
+                || $contact->sub_leader_id !== null;
         }
 
         // Special channels (Kerja Malam): can access any contact entered by a sub-leader
@@ -383,7 +385,10 @@ class ContactController extends Controller
             ->whereExists(function ($sub) {
                 $sub->from('contacts')
                     ->whereColumn('contacts.id', 'contact_channel_histories.contact_id')
-                    ->whereNotNull('contacts.sub_leader_id');
+                    ->where(function (Builder $q): void {
+                        $q->whereNotNull('contacts.sub_leader_id')
+                            ->orWhere('contacts.marketing_channel', User::MARKETING_CHANNEL_TOPMATCH);
+                    });
             })
             ->count();
     }

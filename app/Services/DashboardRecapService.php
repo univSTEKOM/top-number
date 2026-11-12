@@ -147,8 +147,14 @@ class DashboardRecapService
     private function getSpecialChannelLeaderDashboardData(User $user, string $channel, int $dailyTarget): array
     {
         if ($channel === User::MARKETING_CHANNEL_TOPMATCH) {
-            $contacts = $this->getAllContactsQuery()->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH)->count();
-            $contactsThisMonth = $this->getAllContactsQuery()->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH)
+            $contacts = $this->getAllContactsQuery()->where(function ($q) {
+                $q->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH)
+                    ->orWhereNotNull('sub_leader_id');
+            })->count();
+            $contactsThisMonth = $this->getAllContactsQuery()->where(function ($q) {
+                $q->where('marketing_channel', User::MARKETING_CHANNEL_TOPMATCH)
+                    ->orWhereNotNull('sub_leader_id');
+            })
                 ->where('period_key', Contact::activePeriodKey())
                 ->count();
             $assistantCount = User::where('role', User::ROLE_SUB_LEADER)
