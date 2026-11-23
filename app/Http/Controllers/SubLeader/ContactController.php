@@ -7,6 +7,7 @@ use App\Models\Contact;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\ContactImportService;
+use App\Support\City;
 use App\Support\PhoneNumber;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -129,7 +130,7 @@ class ContactController extends Controller
             $companyName = trim($parts[0]);
             $rawPhone = trim($parts[1]);
 
-            if ($companyName === '' || ! PhoneNumber::isValid($rawPhone)) {
+            if ($companyName === '' || mb_strlen($companyName) > 255 || ! PhoneNumber::isValid($rawPhone)) {
                 $invalidCount++;
 
                 continue;
@@ -165,7 +166,7 @@ class ContactController extends Controller
             ->flip();
 
         $batchPhones = [];
-        $created = 0;
+        $rowsToInsert = [];
         $skippedDuplicate = 0;
 
         foreach ($parsedEntries as $entry) {
@@ -177,7 +178,7 @@ class ContactController extends Controller
                 continue;
             }
 
-            Contact::create([
+            $rowsToInsert[] = [
                 'contact_name' => $entry['company_name'],
                 'phone' => $normalizedPhone,
                 'normalized_phone' => $normalizedPhone,
@@ -189,11 +190,13 @@ class ContactController extends Controller
                 'input_by' => $subLeader->id,
                 'leader_id' => $subLeader->leader_id ?? null,
                 'status' => Contact::STATUS_UNCONTACTED,
-            ]);
+            ];
 
             $batchPhones[$normalizedPhone] = true;
-            $created++;
         }
+
+        $created = Contact::bulkInsertIgnoringDuplicates($rowsToInsert);
+        $skippedDuplicate += count($rowsToInsert) - $created;
 
         $total = count($parsedEntries) + $invalidCount;
 
@@ -205,31 +208,60 @@ class ContactController extends Controller
 
     private function storeToploker(Request $request, User $subLeader): RedirectResponse
     {
-        $request->validate([
-            'contact_name' => ['nullable', 'string', 'max:255'],
-            'phones' => ['nullable', 'string', 'max:10000'],
-            'phone' => ['nullable', 'string', 'max:255'],
-        ]);
+        $hasBatch = $request->filled('entries');
+        $errorField = $hasBatch ? 'entries' : 'phone';
+
+        if ($hasBatch) {
+            $request->validate([
+                'entries' => ['required', 'string', 'max:1000000'],
+            ]);
+        } else {
+            $request->validate([
+                'company_name' => ['required', 'string', 'min:2', 'max:255'],
+                'phone' => ['required', 'string', 'max:255'],
+                'city' => ['required', 'string', 'min:2', 'max:100'],
+            ], [
+                'company_name.required' => 'Nama perusahaan wajib diisi.',
+                'company_name.min' => 'Nama perusahaan minimal 2 karakter.',
+                'phone.required' => 'Nomor telepon wajib diisi.',
+                'city.required' => 'Kota/Wilayah wajib diisi.',
+                'city.min' => 'Kota/Wilayah minimal 2 karakter.',
+            ]);
+        }
 
         $teamIds = $subLeader->teams()->pluck('teams.id')->toArray();
 
         if (empty($teamIds)) {
             return back()
-                ->withErrors(['phones' => 'Akun belum memiliki tim. Hubungi superadmin untuk assign tim.'])
+                ->withErrors([$errorField => 'Akun belum memiliki tim. Hubungi superadmin untuk assign tim.'])
                 ->withInput();
         }
 
-        $rawPhones = trim($request->string('phones')->toString());
-        if ($rawPhones === '') {
-            $rawPhones = $request->string('phone')->toString();
-        }
+        if ($hasBatch) {
+            [$entries, $invalidCount] = $this->parseTopLokerEntries($request->string('entries')->toString());
 
-        [$phones, $invalidCount] = $this->extractPhonesFromText($rawPhones);
+            if (empty($entries)) {
+                return back()
+                    ->withErrors(['entries' => 'Format baris tidak valid. Pastikan setiap baris berisi: Nama Perusahaan, Nomor HP, Kota (bukan provinsi).'])
+                    ->withInput();
+            }
+        } else {
+            $rawPhone = trim($request->string('phone')->toString());
+            if (! PhoneNumber::isValid($rawPhone)) {
+                return back()->withErrors(['phone' => PhoneNumber::validationMessage()])->withInput();
+            }
 
-        if (empty($phones)) {
-            return back()
-                ->withErrors(['phones' => PhoneNumber::validationMessage()])
-                ->withInput();
+            $rawCity = $request->string('city')->toString();
+            if (! City::isValid($rawCity)) {
+                return back()->withErrors(['city' => City::validationMessage()])->withInput();
+            }
+
+            $entries = [[
+                'company_name' => trim($request->string('company_name')->toString()),
+                'phone' => PhoneNumber::normalize($rawPhone),
+                'city' => City::normalize($rawCity),
+            ]];
+            $invalidCount = 0;
         }
 
         $dedupWeekKey = Contact::activeDedupWeekKey();
@@ -240,21 +272,27 @@ class ContactController extends Controller
                 $q->where('marketing_channel', User::MARKETING_CHANNEL_TOPLOKER)
                     ->orWhereNull('marketing_channel');
             })
-            ->whereIn('normalized_phone', $phones)
+            ->whereIn('normalized_phone', array_column($entries, 'phone'))
             ->pluck('normalized_phone')
             ->flip();
-        $batchPhones = [];
-        $contactName = $request->string('contact_name')->toString();
-        $contactName = $contactName !== '' ? $contactName : null;
 
-        $created = 0;
+        if (! $hasBatch && isset($existingNormalized[$entries[0]['phone']])) {
+            return back()
+                ->withErrors(['phone' => 'Nomor telepon ini sudah diinput pada minggu ini.'])
+                ->withInput();
+        }
+
+        $batchPhones = [];
+        $rowsToInsert = [];
         $skippedDuplicate = 0;
 
         $totalTeams = count($teamIds);
         $teamIndex = 0;
         $distributionCount = array_fill_keys($teamIds, 0);
 
-        foreach ($phones as $normalizedPhone) {
+        foreach ($entries as $entry) {
+            $normalizedPhone = $entry['phone'];
+
             if (isset($existingNormalized[$normalizedPhone]) || isset($batchPhones[$normalizedPhone])) {
                 $skippedDuplicate++;
 
@@ -262,13 +300,15 @@ class ContactController extends Controller
             }
 
             $currentTeamId = $teamIds[$teamIndex % $totalTeams];
-            Contact::create($this->contactAttributes($subLeader, $normalizedPhone, $contactName, $currentTeamId));
+            $rowsToInsert[] = $this->contactAttributes($subLeader, $normalizedPhone, $entry['company_name'], $entry['city'], $currentTeamId);
 
             $batchPhones[$normalizedPhone] = true;
             $distributionCount[$currentTeamId]++;
             $teamIndex++;
-            $created++;
         }
+
+        $created = Contact::bulkInsertIgnoringDuplicates($rowsToInsert);
+        $skippedDuplicate += count($rowsToInsert) - $created;
 
         $distributionText = '';
         if (! empty($distributionCount)) {
@@ -285,7 +325,17 @@ class ContactController extends Controller
             }
         }
 
-        $totalInput = count($phones) + $invalidCount;
+        if (! $hasBatch) {
+            if ($created === 0) {
+                return back()
+                    ->withErrors(['phone' => 'Nomor telepon ini sudah diinput pada minggu ini.'])
+                    ->withInput();
+            }
+
+            return back()->with('success', 'Kontak berhasil disimpan.'.$distributionText);
+        }
+
+        $totalInput = count($entries) + $invalidCount;
 
         return back()->with(
             'success',
@@ -296,7 +346,7 @@ class ContactController extends Controller
     public function import(Request $request, ContactImportService $contactImportService): RedirectResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:csv,txt,xlsx,xls', 'max:5120'],
+            'file' => ['required', 'file', 'mimes:csv,txt,xlsx,xls', 'max:20480'],
         ]);
 
         $subLeader = auth()->user();
@@ -347,6 +397,8 @@ class ContactController extends Controller
 
         $summary = $contactImportService->importRows($rows, [
             'marketing_channel' => User::MARKETING_CHANNEL_TOPLOKER,
+            'require_company_name' => true,
+            'require_city' => true,
             'team_ids' => $teamIds,
             'input_by' => $subLeader->id,
             'sub_leader_id' => $subLeader->id,
@@ -370,17 +422,18 @@ class ContactController extends Controller
 
         return back()->with(
             'success',
-            'Import selesai. Total: '.count($rows).", Berhasil: {$summary['created']}, Duplikat: {$summary['skipped_duplicate']}, Tidak valid: {$summary['skipped_invalid']}.".$distributionText
+            'Import selesai. Total: '.count($rows).", Berhasil: {$summary['created']}, Duplikat: {$summary['skipped_duplicate']}, Tidak valid / data tidak lengkap: {$summary['skipped_invalid']}.".$distributionText
         );
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function contactAttributes(User $subLeader, string $normalizedPhone, ?string $contactName, int $teamId): array
+    private function contactAttributes(User $subLeader, string $normalizedPhone, string $companyName, string $city, int $teamId): array
     {
         return [
-            'contact_name' => $contactName,
+            'contact_name' => $companyName,
+            'city' => $city,
             'phone' => $normalizedPhone,
             'normalized_phone' => $normalizedPhone,
             'period_key' => Contact::activePeriodKey(),
@@ -395,37 +448,50 @@ class ContactController extends Controller
     }
 
     /**
-     * @return array{0: array<int, string>, 1: int}
+     * Parse batch lines in the format "Nama Perusahaan, Nomor HP, Kota".
+     * Separators: comma, semicolon, or pipe. The last part is the city and the
+     * second-to-last is the phone, so company names containing commas
+     * (e.g. "PT Maju, Tbk") are still parsed correctly.
+     *
+     * @return array{0: array<int, array{company_name: string, phone: string, city: string}>, 1: int}
      */
-    private function extractPhonesFromText(string $value): array
+    private function parseTopLokerEntries(string $value): array
     {
-        $tokens = preg_split('/[\s,;]+/', trim($value)) ?: [];
+        $lines = preg_split('/\r\n|\r|\n/', trim($value)) ?: [];
 
-        $phones = [];
+        $entries = [];
         $invalidCount = 0;
 
-        foreach ($tokens as $token) {
-            $cleanToken = trim($token);
-            if ($cleanToken === '') {
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '') {
                 continue;
             }
 
-            if (! PhoneNumber::isValid($cleanToken)) {
+            $parts = array_map('trim', preg_split('/[,;|]/', $line) ?: []);
+            if (count($parts) < 3) {
                 $invalidCount++;
 
                 continue;
             }
 
-            $normalizedPhone = PhoneNumber::normalize($cleanToken);
-            if ($normalizedPhone === null) {
+            $rawCity = array_pop($parts);
+            $rawPhone = array_pop($parts);
+            $companyName = trim(implode(', ', $parts));
+
+            if (mb_strlen($companyName) < 2 || mb_strlen($companyName) > 255 || ! PhoneNumber::isValid($rawPhone) || ! City::isValid($rawCity)) {
                 $invalidCount++;
 
                 continue;
             }
 
-            $phones[] = $normalizedPhone;
+            $entries[] = [
+                'company_name' => $companyName,
+                'phone' => PhoneNumber::normalize($rawPhone),
+                'city' => City::normalize($rawCity),
+            ];
         }
 
-        return [$phones, $invalidCount];
+        return [$entries, $invalidCount];
     }
 }

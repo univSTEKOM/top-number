@@ -22,6 +22,7 @@ class ContactImportTest extends TestCase
             'team_id' => $team->id,
             'leader_id' => null,
         ]);
+        $subLeader->teams()->attach($team->id);
 
         Contact::create([
             'contact_name' => 'Existing',
@@ -36,12 +37,15 @@ class ContactImportTest extends TestCase
         ]);
 
         $csv = implode("\n", [
-            'name,phone',
-            'Budi,628111111002',
-            'Siti,628111111001',
-            'Invalid,ABCDEF',
-            'Rani,628111111003',
-            'DupInFile,628111111003',
+            'nama_perusahaan,phone,kota',
+            'PT Budi,628111111002,bekasi',
+            'PT Siti,628111111001,Solo',
+            'PT Invalid,ABCDEF,Solo',
+            'PT Rani,628111111003,Semarang',
+            'PT DupInFile,628111111003,Semarang',
+            'PT Provinsi,628111111004,Jawa Tengah',
+            ',628111111005,Solo',
+            'PT TanpaKota,628111111006,',
         ]);
 
         $file = UploadedFile::fake()->createWithContent('contacts.csv', $csv);
@@ -54,6 +58,11 @@ class ContactImportTest extends TestCase
         $response->assertRedirect();
         $response->assertSessionHas('success');
         $this->assertEquals(3, Contact::count());
+        $this->assertDatabaseHas('contacts', [
+            'contact_name' => 'PT Budi',
+            'city' => 'Bekasi',
+            'normalized_phone' => '628111111002',
+        ]);
     }
 
     public function test_import_fails_without_team(): void
@@ -90,6 +99,7 @@ class ContactImportTest extends TestCase
             'team_id' => $team->id,
             'leader_id' => null,
         ]);
+        $subLeader->teams()->attach($team->id);
 
         for ($index = 1; $index <= User::TARGET_SUB_LEADER; $index++) {
             Contact::create([
@@ -104,8 +114,8 @@ class ContactImportTest extends TestCase
         }
 
         $csv = implode("\n", [
-            'name,phone',
-            'OverTarget,628333333333',
+            'nama_perusahaan,phone,kota',
+            'PT OverTarget,628333333333,Bekasi',
         ]);
 
         $file = UploadedFile::fake()->createWithContent('contacts.csv', $csv);

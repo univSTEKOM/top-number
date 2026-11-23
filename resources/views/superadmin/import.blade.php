@@ -49,7 +49,7 @@
                         <x-input-label for="file" value="Pilih File" />
                         <input id="file" name="file" type="file" required accept=".csv,.txt,.xlsx,.xls"
                             class="mt-1 block w-full file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-200">
-                        <p class="mt-2 text-xs text-gray-500">Format didukung: .csv, .txt, .xlsx, .xls (maks 5MB).</p>
+                        <p class="mt-2 text-xs text-gray-500">Format didukung: .csv, .txt, .xlsx, .xls (maks 20MB).</p>
                     </div>
 
                     <div class="flex items-end">

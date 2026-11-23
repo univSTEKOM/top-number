@@ -72,6 +72,7 @@ class ArchiveMonthlyContacts extends Command
                             $rows[] = [
                                 'contact_id'             => $contact->id,
                                 'contact_name'           => $contact->contact_name,
+                                'city'                   => $contact->city,
                                 'phone'                  => $contact->phone,
                                 'normalized_phone'       => $contact->normalized_phone,
                                 'period_key'             => $contact->period_key,
