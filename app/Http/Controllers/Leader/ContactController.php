@@ -111,6 +111,7 @@ class ContactController extends Controller
             'channelContactedMap' => $channelContactedMap,
             'channelContactedDateMap' => $channelContactedDateMap,
             'isSpecialChannel' => $user->isSpecialChannel(),
+            'showCity' => ! $user->isSpecialChannel() || $user->isTopmatch(),
             'channelLabel' => $user->marketingChannelLabel(),
         ]);
     }
@@ -150,7 +151,7 @@ class ContactController extends Controller
 
         return response()->streamDownload(function () use ($user, $channel, $selectedSubLeaderId, $filters, $uiFilters) {
             $handle = fopen('php://output', 'w');
-            $includeCity = ! $user->isSpecialChannel();
+            $includeCity = ! $user->isSpecialChannel() || $user->isTopmatch();
             $header = $includeCity
                 ? ['Nama Perusahaan', 'Nomor', 'Kota', 'Asisten Marketing', 'Status', 'Tanggal Input']
                 : [$user->isTopmatch() ? 'Nama Perusahaan' : 'Nama Kontak', 'Nomor', 'Asisten Marketing', 'Status', 'Tanggal Input'];

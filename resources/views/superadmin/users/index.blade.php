@@ -237,28 +237,48 @@
                                         </form>
                                     </td>
                                     <td class="text-right">
-                                        <button
-                                            type="button"
-                                            title="Hapus User"
-                                            aria-label="Hapus User"
-                                            class="btn-danger inline-flex h-10 w-10 items-center justify-center p-0"
-                                            onclick="openDeleteUserModal(@js([
-                                                'id' => $leader->id,
-                                                'name' => $leader->name,
-                                                'username' => $leader->email,
-                                                'role' => 'Marketing Utama Toploker',
-                                                'deleteUrl' => route('superadmin.users.destroy', $leader),
-                                                'rowId' => 'leader-' . $leader->id,
-                                            ]))"
-                                        >
-                                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <path d="M3 6h18"></path>
-                                                <path d="M19 6l-1 14H6L5 6"></path>
-                                                <path d="M10 11v6"></path>
-                                                <path d="M14 11v6"></path>
-                                                <path d="M9 6V4h6v2"></path>
-                                            </svg>
-                                        </button>
+                                        <div class="flex justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                title="Reset Password"
+                                                aria-label="Reset Password"
+                                                class="btn-subtle inline-flex h-10 w-10 items-center justify-center p-0"
+                                                onclick="openResetPasswordModal(@js([
+                                                    'id' => $leader->id,
+                                                    'name' => $leader->name,
+                                                    'username' => $leader->email,
+                                                    'role' => 'Marketing Utama Toploker',
+                                                    'resetUrl' => route('superadmin.users.reset-password', $leader),
+                                                ]))"
+                                            >
+                                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <rect x="3" y="11" width="18" height="11" rx="2"></rect>
+                                                    <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+                                                </svg>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                title="Hapus User"
+                                                aria-label="Hapus User"
+                                                class="btn-danger inline-flex h-10 w-10 items-center justify-center p-0"
+                                                onclick="openDeleteUserModal(@js([
+                                                    'id' => $leader->id,
+                                                    'name' => $leader->name,
+                                                    'username' => $leader->email,
+                                                    'role' => 'Marketing Utama Toploker',
+                                                    'deleteUrl' => route('superadmin.users.destroy', $leader),
+                                                    'rowId' => 'leader-' . $leader->id,
+                                                ]))"
+                                            >
+                                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M3 6h18"></path>
+                                                    <path d="M19 6l-1 14H6L5 6"></path>
+                                                    <path d="M10 11v6"></path>
+                                                    <path d="M14 11v6"></path>
+                                                    <path d="M9 6V4h6v2"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             @empty
@@ -300,28 +320,48 @@
                                     <td>{{ $leader->email }}</td>
                                     <td>{{ number_format(\App\Models\User::TARGET_TOPMATCH) }} nomor/hari</td>
                                     <td class="text-right">
-                                        <button
-                                            type="button"
-                                            title="Hapus User"
-                                            aria-label="Hapus User"
-                                            class="btn-danger inline-flex h-10 w-10 items-center justify-center p-0"
-                                            onclick="openDeleteUserModal(@js([
-                                                'id' => $leader->id,
-                                                'name' => $leader->name,
-                                                'username' => $leader->email,
-                                                'role' => 'Marketing Utama Topmatch',
-                                                'deleteUrl' => route('superadmin.users.destroy', $leader),
-                                                'rowId' => 'leader-' . $leader->id,
-                                            ]))"
-                                        >
-                                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <path d="M3 6h18"></path>
-                                                <path d="M19 6l-1 14H6L5 6"></path>
-                                                <path d="M10 11v6"></path>
-                                                <path d="M14 11v6"></path>
-                                                <path d="M9 6V4h6v2"></path>
-                                            </svg>
-                                        </button>
+                                        <div class="flex justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                title="Reset Password"
+                                                aria-label="Reset Password"
+                                                class="btn-subtle inline-flex h-10 w-10 items-center justify-center p-0"
+                                                onclick="openResetPasswordModal(@js([
+                                                    'id' => $leader->id,
+                                                    'name' => $leader->name,
+                                                    'username' => $leader->email,
+                                                    'role' => 'Marketing Utama Topmatch',
+                                                    'resetUrl' => route('superadmin.users.reset-password', $leader),
+                                                ]))"
+                                            >
+                                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <rect x="3" y="11" width="18" height="11" rx="2"></rect>
+                                                    <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+                                                </svg>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                title="Hapus User"
+                                                aria-label="Hapus User"
+                                                class="btn-danger inline-flex h-10 w-10 items-center justify-center p-0"
+                                                onclick="openDeleteUserModal(@js([
+                                                    'id' => $leader->id,
+                                                    'name' => $leader->name,
+                                                    'username' => $leader->email,
+                                                    'role' => 'Marketing Utama Topmatch',
+                                                    'deleteUrl' => route('superadmin.users.destroy', $leader),
+                                                    'rowId' => 'leader-' . $leader->id,
+                                                ]))"
+                                            >
+                                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M3 6h18"></path>
+                                                    <path d="M19 6l-1 14H6L5 6"></path>
+                                                    <path d="M10 11v6"></path>
+                                                    <path d="M14 11v6"></path>
+                                                    <path d="M9 6V4h6v2"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             @empty
@@ -363,28 +403,48 @@
                                     <td>{{ $leader->email }}</td>
                                     <td>{{ number_format(\App\Models\User::TARGET_KERJA_MALAM) }} nomor/hari</td>
                                     <td class="text-right">
-                                        <button
-                                            type="button"
-                                            title="Hapus User"
-                                            aria-label="Hapus User"
-                                            class="btn-danger inline-flex h-10 w-10 items-center justify-center p-0"
-                                            onclick="openDeleteUserModal(@js([
-                                                'id' => $leader->id,
-                                                'name' => $leader->name,
-                                                'username' => $leader->email,
-                                                'role' => 'Marketing Utama Kerja Malam',
-                                                'deleteUrl' => route('superadmin.users.destroy', $leader),
-                                                'rowId' => 'leader-' . $leader->id,
-                                            ]))"
-                                        >
-                                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <path d="M3 6h18"></path>
-                                                <path d="M19 6l-1 14H6L5 6"></path>
-                                                <path d="M10 11v6"></path>
-                                                <path d="M14 11v6"></path>
-                                                <path d="M9 6V4h6v2"></path>
-                                            </svg>
-                                        </button>
+                                        <div class="flex justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                title="Reset Password"
+                                                aria-label="Reset Password"
+                                                class="btn-subtle inline-flex h-10 w-10 items-center justify-center p-0"
+                                                onclick="openResetPasswordModal(@js([
+                                                    'id' => $leader->id,
+                                                    'name' => $leader->name,
+                                                    'username' => $leader->email,
+                                                    'role' => 'Marketing Utama Kerja Malam',
+                                                    'resetUrl' => route('superadmin.users.reset-password', $leader),
+                                                ]))"
+                                            >
+                                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <rect x="3" y="11" width="18" height="11" rx="2"></rect>
+                                                    <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+                                                </svg>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                title="Hapus User"
+                                                aria-label="Hapus User"
+                                                class="btn-danger inline-flex h-10 w-10 items-center justify-center p-0"
+                                                onclick="openDeleteUserModal(@js([
+                                                    'id' => $leader->id,
+                                                    'name' => $leader->name,
+                                                    'username' => $leader->email,
+                                                    'role' => 'Marketing Utama Kerja Malam',
+                                                    'deleteUrl' => route('superadmin.users.destroy', $leader),
+                                                    'rowId' => 'leader-' . $leader->id,
+                                                ]))"
+                                            >
+                                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M3 6h18"></path>
+                                                    <path d="M19 6l-1 14H6L5 6"></path>
+                                                    <path d="M10 11v6"></path>
+                                                    <path d="M14 11v6"></path>
+                                                    <path d="M9 6V4h6v2"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             @empty
@@ -493,28 +553,48 @@
                                         </form>
                                     </td>
                                     <td class="text-right">
-                                        <button
-                                            type="button"
-                                            title="Hapus User"
-                                            aria-label="Hapus User"
-                                            class="btn-danger inline-flex h-10 w-10 items-center justify-center p-0"
-                                            onclick="openDeleteUserModal(@js([
-                                                'id' => $subLeader->id,
-                                                'name' => $subLeader->name,
-                                                'username' => $subLeader->email,
-                                                'role' => 'Asisten Marketing',
-                                                'deleteUrl' => route('superadmin.users.destroy', $subLeader),
-                                                'rowId' => 'subLeader-' . $subLeader->id,
-                                            ]))"
-                                        >
-                                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <path d="M3 6h18"></path>
-                                                <path d="M19 6l-1 14H6L5 6"></path>
-                                                <path d="M10 11v6"></path>
-                                                <path d="M14 11v6"></path>
-                                                <path d="M9 6V4h6v2"></path>
-                                            </svg>
-                                        </button>
+                                        <div class="flex justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                title="Reset Password"
+                                                aria-label="Reset Password"
+                                                class="btn-subtle inline-flex h-10 w-10 items-center justify-center p-0"
+                                                onclick="openResetPasswordModal(@js([
+                                                    'id' => $subLeader->id,
+                                                    'name' => $subLeader->name,
+                                                    'username' => $subLeader->email,
+                                                    'role' => 'Asisten Marketing',
+                                                    'resetUrl' => route('superadmin.users.reset-password', $subLeader),
+                                                ]))"
+                                            >
+                                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <rect x="3" y="11" width="18" height="11" rx="2"></rect>
+                                                    <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+                                                </svg>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                title="Hapus User"
+                                                aria-label="Hapus User"
+                                                class="btn-danger inline-flex h-10 w-10 items-center justify-center p-0"
+                                                onclick="openDeleteUserModal(@js([
+                                                    'id' => $subLeader->id,
+                                                    'name' => $subLeader->name,
+                                                    'username' => $subLeader->email,
+                                                    'role' => 'Asisten Marketing',
+                                                    'deleteUrl' => route('superadmin.users.destroy', $subLeader),
+                                                    'rowId' => 'subLeader-' . $subLeader->id,
+                                                ]))"
+                                            >
+                                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M3 6h18"></path>
+                                                    <path d="M19 6l-1 14H6L5 6"></path>
+                                                    <path d="M10 11v6"></path>
+                                                    <path d="M14 11v6"></path>
+                                                    <path d="M9 6V4h6v2"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             @empty
@@ -570,28 +650,48 @@
                                     </td>
                                     <td>{{ number_format(\App\Models\User::TARGET_SUB_LEADER) }} nomor/hari</td>
                                     <td class="text-right">
-                                        <button
-                                            type="button"
-                                            title="Hapus User"
-                                            aria-label="Hapus User"
-                                            class="btn-danger inline-flex h-10 w-10 items-center justify-center p-0"
-                                            onclick="openDeleteUserModal(@js([
-                                                'id' => $subLeader->id,
-                                                'name' => $subLeader->name,
-                                                'username' => $subLeader->email,
-                                                'role' => 'Asisten Marketing Topmatch',
-                                                'deleteUrl' => route('superadmin.users.destroy', $subLeader),
-                                                'rowId' => 'subLeader-' . $subLeader->id,
-                                            ]))"
-                                        >
-                                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <path d="M3 6h18"></path>
-                                                <path d="M19 6l-1 14H6L5 6"></path>
-                                                <path d="M10 11v6"></path>
-                                                <path d="M14 11v6"></path>
-                                                <path d="M9 6V4h6v2"></path>
-                                            </svg>
-                                        </button>
+                                        <div class="flex justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                title="Reset Password"
+                                                aria-label="Reset Password"
+                                                class="btn-subtle inline-flex h-10 w-10 items-center justify-center p-0"
+                                                onclick="openResetPasswordModal(@js([
+                                                    'id' => $subLeader->id,
+                                                    'name' => $subLeader->name,
+                                                    'username' => $subLeader->email,
+                                                    'role' => 'Asisten Marketing Topmatch',
+                                                    'resetUrl' => route('superadmin.users.reset-password', $subLeader),
+                                                ]))"
+                                            >
+                                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <rect x="3" y="11" width="18" height="11" rx="2"></rect>
+                                                    <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+                                                </svg>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                title="Hapus User"
+                                                aria-label="Hapus User"
+                                                class="btn-danger inline-flex h-10 w-10 items-center justify-center p-0"
+                                                onclick="openDeleteUserModal(@js([
+                                                    'id' => $subLeader->id,
+                                                    'name' => $subLeader->name,
+                                                    'username' => $subLeader->email,
+                                                    'role' => 'Asisten Marketing Topmatch',
+                                                    'deleteUrl' => route('superadmin.users.destroy', $subLeader),
+                                                    'rowId' => 'subLeader-' . $subLeader->id,
+                                                ]))"
+                                            >
+                                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M3 6h18"></path>
+                                                    <path d="M19 6l-1 14H6L5 6"></path>
+                                                    <path d="M10 11v6"></path>
+                                                    <path d="M14 11v6"></path>
+                                                    <path d="M9 6V4h6v2"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             @empty
@@ -670,6 +770,33 @@
         </div>
     </x-modal>
 
+    <x-modal name="confirm-password-reset" focusable maxWidth="md">
+        <div class="p-6">
+            <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                <svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+                </svg>
+            </div>
+            <div class="mt-4 text-center">
+                <h3 class="text-xl font-semibold text-slate-900">Reset Password User</h3>
+                <p class="mt-2 text-sm text-slate-600">Apakah Anda yakin ingin mereset password user ini? Password akan diganti menjadi password default <span class="font-semibold text-slate-900">{{ \App\Http\Controllers\SuperAdmin\UserManagementController::DEFAULT_RESET_PASSWORD }}</span>.</p>
+            </div>
+            <div class="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                <p class="font-semibold text-slate-900">Nama : <span id="resetUserName"></span></p>
+                <p class="mt-2">Username : <span id="resetUserUsername"></span></p>
+                <p class="mt-2">Role : <span id="resetUserRole"></span></p>
+            </div>
+            <div id="resetUserError" class="mt-4 hidden rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"></div>
+            <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button type="button" class="btn-subtle w-full sm:w-auto" onclick="closeResetPasswordModal()">Batal</button>
+                <button type="button" id="confirmResetButton" class="btn-main w-full sm:w-auto inline-flex items-center justify-center gap-2" onclick="submitResetPassword()">
+                    <span class="button-text">Reset Password</span>
+                </button>
+            </div>
+        </div>
+    </x-modal>
+
     <script>
         const deleteUserState = {
             selectedUser: null,
@@ -732,6 +859,65 @@
             } finally {
                 button.disabled = false;
                 button.innerHTML = '<span class="button-text">Hapus Permanen</span>';
+            }
+        }
+
+        const resetPasswordState = { selectedUser: null };
+
+        function openResetPasswordModal(user) {
+            resetPasswordState.selectedUser = user;
+            document.getElementById('resetUserName').textContent = user.name ?? '-';
+            document.getElementById('resetUserUsername').textContent = user.username ?? '-';
+            document.getElementById('resetUserRole').textContent = user.role ?? '-';
+            const errorElement = document.getElementById('resetUserError');
+            errorElement.classList.add('hidden');
+            errorElement.textContent = '';
+            const confirmButton = document.getElementById('confirmResetButton');
+            confirmButton.disabled = false;
+            confirmButton.innerHTML = '<span class="button-text">Reset Password</span>';
+            window.dispatchEvent(new CustomEvent('open-modal', { detail: 'confirm-password-reset' }));
+        }
+
+        function closeResetPasswordModal() {
+            window.dispatchEvent(new CustomEvent('close-modal', { detail: 'confirm-password-reset' }));
+        }
+
+        async function submitResetPassword() {
+            const user = resetPasswordState.selectedUser;
+            if (!user) {
+                return;
+            }
+
+            const button = document.getElementById('confirmResetButton');
+            button.disabled = true;
+            button.innerHTML = '<svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg><span>Mereset...</span>';
+
+            try {
+                const response = await fetch(user.resetUrl, {
+                    method: 'PATCH',
+                    headers: {
+                        'X-CSRF-TOKEN': deleteUserState.csrfToken,
+                        'Accept': 'application/json',
+                    },
+                });
+
+                const payload = await response.json().catch(() => null);
+
+                if (!response.ok || !payload?.ok) {
+                    throw new Error(payload?.message || 'Terjadi kesalahan saat mereset password.');
+                }
+
+                closeResetPasswordModal();
+                showToast('Berhasil', payload.message, 'success');
+            } catch (error) {
+                const message = error instanceof Error ? error.message : 'Terjadi kesalahan saat mereset password.';
+                const errorElement = document.getElementById('resetUserError');
+                errorElement.textContent = message;
+                errorElement.classList.remove('hidden');
+                showToast('Gagal', message, 'error');
+            } finally {
+                button.disabled = false;
+                button.innerHTML = '<span class="button-text">Reset Password</span>';
             }
         }
 

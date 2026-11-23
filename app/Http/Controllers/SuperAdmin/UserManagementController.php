@@ -12,11 +12,15 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class UserManagementController extends Controller
 {
+    public const DEFAULT_RESET_PASSWORD = 'toploker@01';
+
     public function index(): View
     {
         // Leaders grouped by marketing channel
@@ -220,6 +224,32 @@ class UserManagementController extends Controller
             'success',
             "Import selesai. Berhasil: {$summary['created']}, Duplikat: {$summary['skipped_duplicate']}, Tidak valid: {$summary['skipped_invalid']}."
         );
+    }
+
+    public function resetPassword(Request $request, User $user): RedirectResponse|JsonResponse
+    {
+        if (! in_array($user->role, [User::ROLE_LEADER, User::ROLE_SUB_LEADER], true)) {
+            $message = 'Hanya password user marketing yang dapat direset.';
+
+            if ($request->wantsJson()) {
+                return response()->json(['ok' => false, 'message' => $message], 403);
+            }
+
+            return back()->withErrors(['user' => $message]);
+        }
+
+        $user->forceFill([
+            'password' => Hash::make(self::DEFAULT_RESET_PASSWORD),
+            'remember_token' => Str::random(60),
+        ])->save();
+
+        $message = "Password {$user->name} berhasil direset ke password default.";
+
+        if ($request->wantsJson()) {
+            return response()->json(['ok' => true, 'message' => $message]);
+        }
+
+        return back()->with('success', $message);
     }
 
     public function destroy(Request $request, User $user): RedirectResponse|JsonResponse
