@@ -193,7 +193,7 @@ class UserManagementController extends Controller
     {
         $validated = $request->validate([
             'team_id' => ['required', Rule::exists('teams', 'id')],
-            'file' => ['required', 'file', 'mimes:csv,txt,xlsx,xls', 'max:5120'],
+            'file' => ['required', 'file', 'mimes:csv,txt,xlsx,xls', 'max:20480'],
             'leader_id' => ['nullable', Rule::exists('users', 'id')->where(fn ($query) => $query->where('role', User::ROLE_LEADER))],
             'sub_leader_id' => ['nullable', Rule::exists('users', 'id')->where(fn ($query) => $query->where('role', User::ROLE_SUB_LEADER))],
         ]);

@@ -91,8 +91,18 @@ class ContactController extends Controller
         $channelContactedMap = $this->buildChannelContactedMap($contacts->items(), $user, $channel);
         $channelContactedDateMap = $this->buildChannelContactedDateMap($contacts->items(), $user, $channel);
 
+        // City options for the Toploker filter dropdown
+        $cityOptions = $user->isSpecialChannel()
+            ? collect()
+            : $this->scopedContacts($user)
+                ->whereNotNull('city')
+                ->distinct()
+                ->orderBy('city')
+                ->pluck('city');
+
         return view('leader.contacts.index', [
             'subLeaders' => $subLeaders,
+            'cityOptions' => $cityOptions,
             'selectedSubLeaderId' => $selectedSubLeaderId,
             'filters' => $filters,
             'uiFilters' => $uiFilters,
@@ -140,8 +150,11 @@ class ContactController extends Controller
 
         return response()->streamDownload(function () use ($user, $channel, $selectedSubLeaderId, $filters, $uiFilters) {
             $handle = fopen('php://output', 'w');
-            $nameHeader = $user->isTopmatch() ? 'Nama Perusahaan' : 'Nama Kontak';
-            fputcsv($handle, [$nameHeader, 'Nomor', 'Asisten Marketing', 'Status', 'Tanggal Input']);
+            $includeCity = ! $user->isSpecialChannel();
+            $header = $includeCity
+                ? ['Nama Perusahaan', 'Nomor', 'Kota', 'Asisten Marketing', 'Status', 'Tanggal Input']
+                : [$user->isTopmatch() ? 'Nama Perusahaan' : 'Nama Kontak', 'Nomor', 'Asisten Marketing', 'Status', 'Tanggal Input'];
+            fputcsv($handle, $header);
 
             $contactsQuery = $this->scopedContacts($user)
                 ->with('subLeader:id,name')
@@ -159,7 +172,7 @@ class ContactController extends Controller
                 $contactsQuery->where('sub_leader_id', $selectedSubLeaderId);
             }
 
-            $contactsQuery->chunk(200, function ($contacts) use ($handle, $channel, $user) {
+            $contactsQuery->chunk(200, function ($contacts) use ($handle, $channel, $user, $includeCity) {
                 // Build channel contacted map for this chunk
                 $contactedMap = $this->buildChannelContactedMap($contacts->all(), $user, $channel);
 
@@ -167,13 +180,13 @@ class ContactController extends Controller
                     $isContacted = $contactedMap[$contact->id] ?? $contact->isContacted();
                     $statusLabel = $isContacted ? 'Sudah Dihubungi' : 'Belum Dihubungi';
 
-                    fputcsv($handle, [
-                        $contact->contact_name ?? '-',
-                        $contact->phone,
-                        $contact->subLeader?->name ?? '-',
-                        $statusLabel,
-                        $contact->created_at->format('Y-m-d H:i:s'),
-                    ]);
+                    $row = [$contact->contact_name ?? '-', $contact->phone];
+                    if ($includeCity) {
+                        $row[] = $contact->city ?? '-';
+                    }
+                    array_push($row, $contact->subLeader?->name ?? '-', $statusLabel, $contact->created_at->format('Y-m-d H:i:s'));
+
+                    fputcsv($handle, $row);
                 }
             });
 

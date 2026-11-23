@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 
 #[Fillable([
     'contact_name',
+    'city',
     'phone',
     'normalized_phone',
     'period_key',
@@ -44,6 +45,37 @@ class Contact extends Model
     public static function activeDedupWeekKey(): string
     {
         return now()->format('o-\WW');
+    }
+
+    /**
+     * Insert many contacts with a few multi-row INSERT statements instead of
+     * one query per row (each row is a network round trip to the database).
+     * Rows that hit the unique index (normalized_phone, dedup_week,
+     * marketing_channel), e.g. from a concurrent input, are skipped.
+     * Every row must have the same keys.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return int Number of rows actually inserted
+     */
+    public static function bulkInsertIgnoringDuplicates(array $rows, int $chunkSize = 500): int
+    {
+        if (empty($rows)) {
+            return 0;
+        }
+
+        $now = now();
+        $inserted = 0;
+
+        foreach (array_chunk($rows, $chunkSize) as $chunk) {
+            $chunk = array_map(
+                fn (array $row) => $row + ['created_at' => $now, 'updated_at' => $now],
+                $chunk
+            );
+
+            $inserted += static::query()->insertOrIgnore($chunk);
+        }
+
+        return $inserted;
     }
 
     public static function statusFromInput(string $value): string

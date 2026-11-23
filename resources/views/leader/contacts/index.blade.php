@@ -45,17 +45,17 @@
                         @endif
                     </div>
                     <div class="flex flex-wrap gap-2">
-                        <a href="{{ route('leader.contacts.export', request()->only('sub_leader_id', 'period', 'start_date', 'end_date', 'q', 'status')) }}" class="btn-main">Export CSV</a>
+                        <a href="{{ route('leader.contacts.export', request()->only('sub_leader_id', 'period', 'start_date', 'end_date', 'q', 'city', 'status')) }}" class="btn-main">Export CSV</a>
                     </div>
                 </div>
 
                 <form method="GET" class="mt-4 space-y-3" x-data="{ period: '{{ $filters['period'] ?? 'all' }}' }">
-                    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    <div class="grid gap-3 md:grid-cols-2 {{ $isSpecialChannel ? 'xl:grid-cols-5' : 'xl:grid-cols-6' }}">
                         <input
                             type="search"
                             name="q"
                             value="{{ $uiFilters['q'] ?? '' }}"
-                            placeholder="Cari nama, nomor..."
+                            placeholder="{{ $isSpecialChannel ? 'Cari nama, nomor...' : 'Cari perusahaan, nomor, kota...' }}"
                             autocomplete="off"
                             aria-label="Cari data kontak"
                             class="xl:col-span-2"
@@ -67,6 +67,14 @@
                                 <option value="{{ $subLeader->id }}" @selected($selectedSubLeaderId === $subLeader->id)>
                                     {{ $subLeader->name }}
                                 </option>
+                            @endforeach
+                        </select>
+                        @endif
+                        @if (!$isSpecialChannel)
+                        <select name="city" aria-label="Pilih kota">
+                            <option value="">Semua Kota</option>
+                            @foreach ($cityOptions as $cityOption)
+                                <option value="{{ $cityOption }}" @selected(($uiFilters['city'] ?? null) === $cityOption)>{{ $cityOption }}</option>
                             @endforeach
                         </select>
                         @endif
@@ -101,7 +109,7 @@
 
                     <div class="flex flex-wrap items-center gap-2">
                         <button type="submit" class="btn-main">Terapkan</button>
-                        @if ($selectedSubLeaderId || ($filters['period'] ?? 'all') !== 'all' || ($filters['start_date'] ?? null) || ($filters['end_date'] ?? null) || ($uiFilters['q'] ?? null) || ($uiFilters['status'] ?? 'all') !== 'all' || ($uiFilters['per_page'] ?? 20) !== 20)
+                        @if ($selectedSubLeaderId || ($filters['period'] ?? 'all') !== 'all' || ($filters['start_date'] ?? null) || ($filters['end_date'] ?? null) || ($uiFilters['q'] ?? null) || ($uiFilters['city'] ?? null) || ($uiFilters['status'] ?? 'all') !== 'all' || ($uiFilters['per_page'] ?? 20) !== 20)
                             <a href="{{ route('leader.contacts.index') }}" class="btn-subtle">Reset Semua Filter</a>
                         @endif
                     </div>
@@ -162,7 +170,7 @@
                     <table class="table-clean">
                         <thead>
                                 <tr>
-                                    <th>{{ $channelLabel === 'Topmatch' ? 'Nama Perusahaan' : 'Nama Kontak' }}</th>
+                                    <th>{{ ($channelLabel === 'Topmatch' || !$isSpecialChannel) ? 'Nama Perusahaan' : 'Nama Kontak' }}</th>
                                     <th>Nomor
                                         <button id="bulk-copy-btn" type="button" title="Bulk Copy + Mark as Contacted" class="ml-2 inline-flex h-6 w-6 items-center justify-center rounded border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100" data-bulk-url="{{ route('leader.contacts.bulk-status') }}" aria-label="Bulk Copy and Mark as Contacted">
                                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -172,6 +180,9 @@
                                             </svg>
                                         </button>
                                     </th>
+                                    @if (!$isSpecialChannel)
+                                    <th>Kota</th>
+                                    @endif
                                     <th>Input Oleh</th>
                                     <th>Status</th>
                                     <th>Tanggal</th>
@@ -189,6 +200,9 @@
                                 <tr data-contact-id="{{ $contact->id }}" data-phone="{{ $contact->phone }}">
                                     <td>{{ $contact->contact_name ?? '-' }}</td>
                                     <td class="font-medium">{{ $contact->phone }}</td>
+                                    @if (!$isSpecialChannel)
+                                    <td>{{ $contact->city ?? '-' }}</td>
+                                    @endif
                                     <td>
                                         @if ($contact->subLeader)
                                             {{ $contact->subLeader->name }}
@@ -222,7 +236,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="7" class="px-4 py-4 text-slate-500">Belum ada data nomor.</td>
+                                    <td colspan="{{ $isSpecialChannel ? 7 : 8 }}" class="px-4 py-4 text-slate-500">Belum ada data nomor.</td>
                                 </tr>
                             @endforelse
                         </tbody>

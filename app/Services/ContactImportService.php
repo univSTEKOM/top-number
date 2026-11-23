@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Contact;
 use App\Models\User;
+use App\Support\City;
 use App\Support\PhoneNumber;
 use Illuminate\Http\UploadedFile;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -11,7 +12,7 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 class ContactImportService
 {
     /**
-     * @return array<int, array{contact_name: string|null, phone: string}>
+     * @return array<int, array{contact_name: string|null, phone: string, city: string|null}>
      */
     public function extractRows(UploadedFile $file): array
     {
@@ -32,8 +33,8 @@ class ContactImportService
     }
 
     /**
-     * @param  array<int, array{contact_name: string|null, phone: string}>  $rows
-     * @param  array{team_id?:int,team_ids?:array<int>,input_by:int,sub_leader_id:?int,leader_id:?int,period_key?:string,marketing_channel?:string,require_company_name?:bool}  $context
+     * @param  array<int, array{contact_name: string|null, phone: string, city: string|null}>  $rows
+     * @param  array{team_id?:int,team_ids?:array<int>,input_by:int,sub_leader_id:?int,leader_id:?int,period_key?:string,marketing_channel?:string,require_company_name?:bool,require_city?:bool}  $context
      * @return array{created:int,skipped_duplicate:int,skipped_invalid:int,distribution:array<int,int>}
      */
     public function importRows(array $rows, array $context): array
@@ -42,38 +43,22 @@ class ContactImportService
         $dedupWeekKey = Contact::activeDedupWeekKey();
         $marketingChannel = $context['marketing_channel'] ?? User::MARKETING_CHANNEL_TOPLOKER;
         $requireCompanyName = (bool) ($context['require_company_name'] ?? false);
-
-        // Duplicate check: scoped to the current week and channel.
-        $existingNormalized = Contact::query()
-            ->where('dedup_week', $dedupWeekKey)
-            ->where('marketing_channel', $marketingChannel)
-            ->whereNotNull('normalized_phone')
-            ->pluck('normalized_phone')
-            ->flip();
+        $requireCity = (bool) ($context['require_city'] ?? false);
 
         $teamIds = $context['team_ids'] ?? (isset($context['team_id']) ? [$context['team_id']] : []);
         if (empty($teamIds) && $marketingChannel === User::MARKETING_CHANNEL_TOPLOKER) {
             throw new \InvalidArgumentException('team_ids or team_id must be provided for Toploker channel.');
         }
 
-        $batchPhones = [];
-        $created = 0;
-        $skippedDuplicate = 0;
         $skippedInvalid = 0;
 
-        $distributionCount = ! empty($teamIds) ? array_fill_keys($teamIds, 0) : [];
-        $teamIndex = 0;
-        $totalTeams = count($teamIds);
-
+        // Pass 1: validate and normalize rows (no database access).
+        $candidates = [];
         foreach ($rows as $row) {
-            $rawPhone = (string) ($row['phone'] ?? '');
-            if (! PhoneNumber::isValid($rawPhone)) {
-                $skippedInvalid++;
+            $normalizedPhone = PhoneNumber::isValid((string) ($row['phone'] ?? ''))
+                ? PhoneNumber::normalize((string) $row['phone'])
+                : null;
 
-                continue;
-            }
-
-            $normalizedPhone = PhoneNumber::normalize($rawPhone);
             if ($normalizedPhone === null) {
                 $skippedInvalid++;
 
@@ -84,13 +69,49 @@ class ContactImportService
                 ? trim((string) $row['contact_name'])
                 : null;
 
-            // If company name is required (TopMatch), skip if empty
-            if ($requireCompanyName && ($contactName === null || $contactName === '')) {
+            // If company name is required (TopMatch), skip if empty; never store over-long names
+            if (($requireCompanyName && $contactName === null) || ($contactName !== null && mb_strlen($contactName) > 255)) {
                 $skippedInvalid++;
 
                 continue;
             }
 
+            $rawCity = trim((string) ($row['city'] ?? ''));
+            $city = $rawCity !== '' && City::isValid($rawCity) ? City::normalize($rawCity) : null;
+
+            // If city is required (Toploker Asisten Marketing), skip if empty or a province name
+            if ($requireCity && $city === null) {
+                $skippedInvalid++;
+
+                continue;
+            }
+
+            $candidates[] = [$normalizedPhone, $contactName, $city];
+        }
+
+        // Pass 2: duplicate check only for the phones in this file, scoped to the current week and channel.
+        $existingNormalized = [];
+        foreach (array_chunk(array_unique(array_column($candidates, 0)), 1000) as $phoneChunk) {
+            Contact::query()
+                ->where('dedup_week', $dedupWeekKey)
+                ->where('marketing_channel', $marketingChannel)
+                ->whereIn('normalized_phone', $phoneChunk)
+                ->pluck('normalized_phone')
+                ->each(function (string $phone) use (&$existingNormalized): void {
+                    $existingNormalized[$phone] = true;
+                });
+        }
+
+        // Pass 3: build rows, distribute round-robin across teams, then bulk insert.
+        $batchPhones = [];
+        $rowsToInsert = [];
+        $skippedDuplicate = 0;
+
+        $distributionCount = ! empty($teamIds) ? array_fill_keys($teamIds, 0) : [];
+        $teamIndex = 0;
+        $totalTeams = count($teamIds);
+
+        foreach ($candidates as [$normalizedPhone, $contactName, $city]) {
             if (isset($existingNormalized[$normalizedPhone]) || isset($batchPhones[$normalizedPhone])) {
                 $skippedDuplicate++;
 
@@ -99,8 +120,9 @@ class ContactImportService
 
             $currentTeamId = $totalTeams > 0 ? $teamIds[$teamIndex % $totalTeams] : null;
 
-            Contact::create([
+            $rowsToInsert[] = [
                 'contact_name' => $contactName,
+                'city' => $city,
                 'phone' => $normalizedPhone,
                 'normalized_phone' => $normalizedPhone,
                 'period_key' => $periodKey,
@@ -111,15 +133,17 @@ class ContactImportService
                 'input_by' => $context['input_by'],
                 'leader_id' => $context['leader_id'] ?? null,
                 'status' => Contact::STATUS_UNCONTACTED,
-            ]);
+            ];
 
             $batchPhones[$normalizedPhone] = true;
             if ($currentTeamId !== null) {
                 $distributionCount[$currentTeamId]++;
                 $teamIndex++;
             }
-            $created++;
         }
+
+        $created = Contact::bulkInsertIgnoringDuplicates($rowsToInsert);
+        $skippedDuplicate += count($rowsToInsert) - $created;
 
         return [
             'created' => $created,
@@ -161,7 +185,7 @@ class ContactImportService
 
     /**
      * @param  array<int, array<int, mixed>>  $rawRows
-     * @return array<int, array{contact_name: string|null, phone: string}>
+     * @return array<int, array{contact_name: string|null, phone: string, city: string|null}>
      */
     private function normalizeRows(array $rawRows): array
     {
@@ -176,6 +200,7 @@ class ContactImportService
 
         $phoneIndex = null;
         $nameIndex = null;
+        $cityIndex = null;
 
         foreach ($header as $index => $column) {
             if (in_array($column, ['phone', 'nomor', 'no hp', 'nohp', 'number', 'no_telp', 'notelp', 'telepon'], true)) {
@@ -184,6 +209,10 @@ class ContactImportService
 
             if (in_array($column, ['name', 'nama', 'contact_name', 'kontak', 'nama_perusahaan', 'nama perusahaan'], true)) {
                 $nameIndex = $index;
+            }
+
+            if (in_array($column, ['city', 'kota', 'kota/kabupaten', 'kota_kabupaten', 'kabupaten/kota', 'kabupaten', 'wilayah', 'region', 'daerah', 'kota/wilayah'], true)) {
+                $cityIndex = $index;
             }
         }
 
@@ -205,6 +234,7 @@ class ContactImportService
             $rows[] = [
                 'contact_name' => $nameIndex !== null ? (string) ($row[$nameIndex] ?? '') : null,
                 'phone' => (string) ($row[$phoneIndex] ?? ''),
+                'city' => $cityIndex !== null ? (string) ($row[$cityIndex] ?? '') : null,
             ];
         }
 

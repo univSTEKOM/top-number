@@ -31,18 +31,20 @@ final class ContactFilter
     }
 
     /**
-     * @return array{q: string|null, status: string, per_page: int}
+     * @return array{q: string|null, city: string|null, status: string, per_page: int}
      */
     public static function resolveUiFilters(Request $request): array
     {
         $validated = $request->validate([
             'q' => ['nullable', 'string', 'max:100'],
+            'city' => ['nullable', 'string', 'max:100'],
             'status' => ['nullable', 'in:all,contacted,uncontacted'],
             'per_page' => ['nullable', 'in:10,20,50,100'],
         ]);
 
         return [
             'q' => isset($validated['q']) ? trim((string) $validated['q']) : null,
+            'city' => isset($validated['city']) && trim((string) $validated['city']) !== '' ? trim((string) $validated['city']) : null,
             'status' => (string) ($validated['status'] ?? 'all'),
             'per_page' => (int) ($validated['per_page'] ?? 20),
         ];
@@ -92,12 +94,17 @@ final class ContactFilter
                 $builder
                     ->where('contact_name', 'like', "%{$keyword}%")
                     ->orWhere('phone', 'like', "%{$keyword}%")
+                    ->orWhere('city', 'like', "%{$keyword}%")
                     ->orWhereHas('subLeader', fn (Builder $q) => $q->where('name', 'like', "%{$keyword}%"));
 
                 if ($includeLeaderSearch) {
                     $builder->orWhereHas('leader', fn (Builder $q) => $q->where('name', 'like', "%{$keyword}%"));
                 }
             });
+        }
+
+        if (! empty($uiFilters['city'])) {
+            $query->where('city', $uiFilters['city']);
         }
 
         if (($uiFilters['status'] ?? 'all') === 'contacted') {
