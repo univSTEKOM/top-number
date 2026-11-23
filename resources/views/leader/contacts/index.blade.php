@@ -197,7 +197,7 @@
                                     $isContactedInChannel = $channelContactedMap[$contact->id] ?? false;
                                     $statusLabelText = $isContactedInChannel ? 'Sudah Dihubungi' : 'Belum Dihubungi';
                                 @endphp
-                                <tr data-contact-id="{{ $contact->id }}" data-phone="{{ $contact->phone }}">
+                                <tr data-contact-id="{{ $contact->id }}" data-phone="{{ $contact->phone }}" data-name="{{ $contact->contact_name ?? '' }}" data-city="{{ $isSpecialChannel ? '' : ($contact->city ?? '') }}">
                                     <td>{{ $contact->contact_name ?? '-' }}</td>
                                     <td class="font-medium">{{ $contact->phone }}</td>
                                     @if (!$isSpecialChannel)
@@ -379,6 +379,7 @@
 
 
         // Bulk copy + bulk update handler
+        const isSpecialChannel = @json((bool) $isSpecialChannel);
         const bulkBtn = document.getElementById('bulk-copy-btn');
         let bulkLock = false;
         if (bulkBtn) {
@@ -389,6 +390,7 @@
                 const bulkUrl = bulkBtn.dataset.bulkUrl;
                 const rows = Array.from(document.querySelectorAll('table tbody tr'));
                 const phones = [];
+                const lines = [];
                 const ids = [];
                 const rowData = [];
 
@@ -397,6 +399,9 @@
                     const id = row.dataset.contactId ? parseInt(row.dataset.contactId, 10) : null;
                     if (phone && id) {
                         phones.push(phone);
+                        const name = row.dataset.name?.trim() || '-';
+                        const city = row.dataset.city?.trim() || '-';
+                        lines.push(isSpecialChannel ? `${name}\t${phone}` : `${name}\t${phone}\t${city}`);
                         ids.push(id);
                         rowData.push({ row, id, phone });
                     }
@@ -408,7 +413,7 @@
                     return;
                 }
 
-                const payloadText = phones.join('\n');
+                const payloadText = lines.join('\n');
 
                 try {
                     await navigator.clipboard.writeText(payloadText);
