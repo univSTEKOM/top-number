@@ -180,7 +180,7 @@
                                             </svg>
                                         </button>
                                     </th>
-                                    @if (!$isSpecialChannel)
+                                    @if ($showCity)
                                     <th>Kota</th>
                                     @endif
                                     <th>Input Oleh</th>
@@ -197,10 +197,10 @@
                                     $isContactedInChannel = $channelContactedMap[$contact->id] ?? false;
                                     $statusLabelText = $isContactedInChannel ? 'Sudah Dihubungi' : 'Belum Dihubungi';
                                 @endphp
-                                <tr data-contact-id="{{ $contact->id }}" data-phone="{{ $contact->phone }}" data-name="{{ $contact->contact_name ?? '' }}" data-city="{{ $isSpecialChannel ? '' : ($contact->city ?? '') }}">
+                                <tr data-contact-id="{{ $contact->id }}" data-phone="{{ $contact->phone }}" data-name="{{ $contact->contact_name ?? '' }}" data-city="{{ $showCity ? ($contact->city ?? '') : '' }}">
                                     <td>{{ $contact->contact_name ?? '-' }}</td>
                                     <td class="font-medium">{{ $contact->phone }}</td>
-                                    @if (!$isSpecialChannel)
+                                    @if ($showCity)
                                     <td>{{ $contact->city ?? '-' }}</td>
                                     @endif
                                     <td>
@@ -236,7 +236,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="{{ $isSpecialChannel ? 7 : 8 }}" class="px-4 py-4 text-slate-500">Belum ada data nomor.</td>
+                                    <td colspan="{{ $showCity ? 8 : 7 }}" class="px-4 py-4 text-slate-500">Belum ada data nomor.</td>
                                 </tr>
                             @endforelse
                         </tbody>
@@ -379,7 +379,7 @@
 
 
         // Bulk copy + bulk update handler
-        const isSpecialChannel = @json((bool) $isSpecialChannel);
+        const showCity = @json((bool) $showCity);
         const bulkBtn = document.getElementById('bulk-copy-btn');
         let bulkLock = false;
         if (bulkBtn) {
@@ -401,7 +401,7 @@
                         phones.push(phone);
                         const name = row.dataset.name?.trim() || '-';
                         const city = row.dataset.city?.trim() || '-';
-                        lines.push(isSpecialChannel ? `${name}\t${phone}` : `${name}\t${phone}\t${city}`);
+                        lines.push(showCity ? `${name}\t${phone}\t${city}` : `${name}\t${phone}`);
                         ids.push(id);
                         rowData.push({ row, id, phone });
                     }

@@ -40,7 +40,9 @@ Route::middleware(['auth', 'role:superadmin'])
         Route::post('/teams', [UserManagementController::class, 'storeTeam'])->name('teams.store');
         Route::patch('/users/{user}/assign-team', [UserManagementController::class, 'assignTeam'])
             ->name('users.assign-team');
-Route::delete('/users/{user}', [UserManagementController::class, 'destroy'])
+        Route::patch('/users/{user}/reset-password', [UserManagementController::class, 'resetPassword'])
+            ->name('users.reset-password');
+        Route::delete('/users/{user}', [UserManagementController::class, 'destroy'])
             ->name('users.destroy');
     });
 
